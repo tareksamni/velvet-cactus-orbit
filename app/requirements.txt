@@ -1,7 +1,16 @@
-fastapi==0.115.6
+fastapi==0.141.1
+# Pinned explicitly even though FastAPI pulls it in. FastAPI's own constraint is
+# only starlette>=0.46.0, which would happily resolve to a version carrying
+# CVE-2026-48818 (SSRF via UNC paths in StaticFiles — this app mounts
+# StaticFiles) and CVE-2026-54283 (request.form() limits ignored — this app
+# takes form uploads). Naming it here makes the security floor explicit and
+# enforced rather than incidental.
+starlette==1.4.1
 uvicorn[standard]==0.34.0
-jinja2==3.1.5
-python-multipart==0.0.20
+jinja2==3.1.6
+# 0.0.20 had an arbitrary file write via path traversal (CVE-2026-24486) plus
+# two DoS issues. This library parses every upload the app accepts.
+python-multipart==0.0.32
 boto3==1.35.92
 pydantic==2.10.4
 pydantic-settings==2.7.1

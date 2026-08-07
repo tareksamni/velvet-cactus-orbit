@@ -217,7 +217,7 @@ components:
       properties:
         file:
           type: string
-          format: binary
+          contentMediaType: application/octet-stream
           title: File
           description: CSV file to process.
       type: object
@@ -228,7 +228,7 @@ components:
       properties:
         file:
           type: string
-          format: binary
+          contentMediaType: application/octet-stream
           title: File
           description: CSV file to process.
       type: object
@@ -460,6 +460,11 @@ components:
         type:
           type: string
           title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
       type: object
       required:
       - loc

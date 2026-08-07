@@ -102,7 +102,7 @@ def _validate_upload(upload: UploadFile, data: bytes, settings: Settings) -> Non
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty.")
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
             f"File exceeds the {settings.max_upload_bytes} byte limit.",
         )
     name = (upload.filename or "").lower()
