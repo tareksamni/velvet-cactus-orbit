@@ -31,6 +31,7 @@ htmlcov/
 build/
 ansible/build/
 .devspace/
+*.log
 
 # ---------------------------------------------------------------------------
 # Terraform — never commit state or real variable values
