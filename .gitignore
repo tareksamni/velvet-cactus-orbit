@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# Sample data
+# The case-study attachment is not redistributed with the repo. A small slice
+# of it is committed as a test fixture so the parser tests are self-contained.
+# ---------------------------------------------------------------------------
+soh-1-.csv
+*.csv
+!app/tests/fixtures/*.csv
+
+# The case study brief itself is not redistributed either.
+devops-casestudy-sr.pdf
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# Build / generated artifacts
+# ---------------------------------------------------------------------------
+build/
+ansible/build/
+.devspace/
+
+# ---------------------------------------------------------------------------
+# Terraform — never commit state or real variable values
+# ---------------------------------------------------------------------------
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+
+# ---------------------------------------------------------------------------
+# Helm
+# ---------------------------------------------------------------------------
+charts/**/charts/
+*.tgz
+
+# ---------------------------------------------------------------------------
+# Secrets & local overrides
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+kubeconfig
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+.DS_Store
