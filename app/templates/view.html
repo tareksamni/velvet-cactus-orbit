@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ result.filename }} &middot; CSV Processor{% endblock %}
+{% block content %}
+
+<section class="card">
+  <h1>{{ result.filename }}</h1>
+
+  <dl class="stats">
+    <div><dt>Rows</dt><dd>{{ '{:,}'.format(result.row_count) }}</dd></div>
+    <div><dt>Displayed</dt><dd>{{ '{:,}'.format(result.displayed_rows) }}</dd></div>
+    <div><dt>Columns</dt><dd>{{ result.columns | length }}</dd></div>
+    <div><dt>Header row</dt><dd>{{ 'yes' if result.had_header else 'no' }}</dd></div>
+    <div><dt>Skipped lines</dt><dd>{{ result.errors | length }}</dd></div>
+  </dl>
+
+  <p class="muted">
+    Archived to object storage as <code>{{ result.key }}</code>.
+    The complete file is stored; the table below is capped for browser sanity.
+  </p>
+
+  {% if result.truncated %}
+    <p class="warning">
+      Showing the first {{ '{:,}'.format(result.displayed_rows) }} of
+      {{ '{:,}'.format(result.row_count) }} rows. The full file was archived.
+    </p>
+  {% endif %}
+
+  {% if result.errors %}
+    <details class="errors">
+      <summary>{{ result.errors | length }} line(s) could not be parsed and were skipped</summary>
+      <ul>
+        {% for error in result.errors %}
+          <li>Line {{ error.line_number }}: {{ error.reason }} &mdash; <code>{{ error.raw }}</code></li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</section>
+
+<section class="card">
+  <table class="rows">
+    <thead>
+      <tr>
+        <th class="num">#</th>
+        {% for column in result.columns %}<th>{{ column }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in result.rows %}
+      <tr>
+        <td class="num muted">{{ row.line_number }}</td>
+        {% for value in row.values %}<td>{{ value }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<p><a href="/">&larr; Back to upload</a></p>
+
+{% endblock %}

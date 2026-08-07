@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CSV Processor{% endblock %}</title>
+  <!-- Served by the nginx sidecar from the shared emptyDir volume in Kubernetes. -->
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">CSV Processor</a>
+    <span class="env env--{{ settings.display_environment }}">{{ settings.environment }}</span>
+    <nav>
+      <a href="/">Upload</a>
+      <a href="/docs">API docs</a>
+    </nav>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      DevOps case study &middot; bucket <code>{{ settings.s3_bucket }}</code>
+      {% if settings.s3_endpoint_url %}<span class="muted">(MinIO)</span>{% else %}<span class="muted">(AWS S3)</span>{% endif %}
+    </p>
+  </footer>
+
+  <script src="/static/js/app.js" defer></script>
+</body>
+</html>

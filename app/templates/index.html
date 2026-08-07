@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+
+<section class="card">
+  <h1>Upload a CSV</h1>
+  <p class="muted">
+    Expected format: three columns &mdash; <code>sku</code>, <code>product_name</code>, <code>price</code>.
+    A header row is optional. Maximum {{ (settings.max_upload_bytes / 1024 / 1024) | round(0, 'floor') | int }} MB.
+  </p>
+
+  <form action="/upload" method="post" enctype="multipart/form-data" id="upload-form">
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <button type="submit">Process file</button>
+    <span class="spinner" hidden>Processing&hellip;</span>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Previously processed files</h2>
+
+  {% if storage_error %}
+    <p class="error">Object storage is not reachable: {{ storage_error }}</p>
+  {% elif not files %}
+    <p class="muted">Nothing processed yet. Upload a file to get started.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr><th>File</th><th>Size</th><th>Uploaded</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for file in files %}
+        <tr>
+          <td><code>{{ file.filename }}</code></td>
+          <td class="num">{{ '{:,}'.format(file.size_bytes) }} B</td>
+          <td>{{ file.uploaded_at.strftime('%Y-%m-%d %H:%M UTC') if file.uploaded_at else '&mdash;' }}</td>
+          <td><a href="/files/{{ file.key }}">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted">
+      Listed directly from object storage &mdash; the application keeps no database,
+      so it stays stateless and horizontally scalable.
+    </p>
+  {% endif %}
+</section>
+
+{% endblock %}
