@@ -40,6 +40,17 @@ honest deployable environment rather than becoming a development special case.
   than in the first deployment.
 - Edits land in the running container in under a second; no rebuild, no
   redeploy.
+- **Static assets need a second sync target, which is not obvious.** nginx does
+  not serve `/app/static`; it serves `/shared/static`, which the `static-init`
+  init container copied there once at pod start. An init container runs exactly
+  once, so syncing a CSS change into `/app` leaves nginx serving the stale copy
+  for the life of the pod. `devspace.yaml` therefore syncs `./app/static`
+  straight into `/shared/static` as well, and patches that volumeMount writable
+  for the dev pod only. Verified by editing `app.css` and re-requesting it
+  through nginx.
+- The dev pod also needs `readOnlyRootFilesystem: false`, patched dev-only:
+  DevSpace cannot sync into a read-only filesystem, and production keeps the
+  read-only root.
 - **Cost:** a developer needs a running Kubernetes cluster. `make up` handles it,
   but it is heavier than `docker compose up` and needs more RAM.
 - DevSpace is an extra tool to install (`make bootstrap`).

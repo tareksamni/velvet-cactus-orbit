@@ -140,6 +140,30 @@ A selector matches on a *subset* of labels, so adding a distinguishing label to
 the extra workload does not help — the **name itself** has to differ.
 `make smoke` now prints endpoints and pods on failure so this is obvious.
 
+### `devspace dev`: a CSS or JS edit does not show up
+
+Expected if you only sync `./app`. nginx serves `/shared/static`, not
+`/app/static` — the `static-init` init container populates the shared volume
+once at pod start and never runs again, so a file synced into `/app` is
+invisible to nginx.
+
+`devspace.yaml` handles this with a second sync target
+(`./app/static:/shared/static`) plus a patch making that mount writable in the
+dev pod. If it stops working, check both are still present:
+
+```bash
+devspace print | grep -A3 'shared-static'
+kubectl -n csv-app exec deploy/csv-app-devspace -c app -- head -1 /shared/static/css/app.css
+```
+
+### `devspace dev`: container stuck on "Waiting for initial sync to complete"
+
+The app container runs as uid 10001 and `/.devspace` is root-owned, so
+DevSpace's restart helper cannot write its `/.devspace/start` marker and the
+container waits forever — nginx then crash-loops, because its probe proxies to
+an app that never started. Do not set `startContainer: true` on the sync; the
+image already contains the code and `uvicorn --reload` picks up the sync.
+
 ### Ansible deploys the wrong environment
 
 If `-e env=dev` produces prod values, check the inventory: a host listed in
