@@ -140,6 +140,38 @@ A selector matches on a *subset* of labels, so adding a distinguishing label to
 the extra workload does not help — the **name itself** has to differ.
 `make smoke` now prints endpoints and pods on failure so this is obvious.
 
+### The image scan fails the build
+
+`docker.yml` fails on HIGH/CRITICAL vulnerabilities that have a fix available.
+`ignore-unfixed: true` means a vulnerability with no patch will not block you —
+there would be no action to take — but it still appears in the SARIF report.
+
+Reproduce locally before guessing:
+
+```bash
+docker build -t csv-app:scan app/
+trivy image --severity HIGH,CRITICAL --ignore-unfixed --scanners vuln csv-app:scan
+```
+
+In order of preference:
+
+1. **Upgrade the dependency.** Trivy prints the fixed version. Bump it in
+   `app/requirements.txt`, run `make test`, rescan. Watch for transitive pins —
+   Starlette could not be patched without also moving FastAPI, because FastAPI
+   capped it.
+2. **Upgrade the base image** if the finding is an OS package. Dependabot opens
+   these weekly.
+3. **Accept it, with an expiry.** Only when there is genuinely no fix and the
+   code path is unreachable. Add a `.trivyignore` entry with the CVE, a reason,
+   and an `exp:` date so it comes back rather than becoming permanent:
+   ```
+   # unreachable: we never parse untrusted XML
+   CVE-2026-12345 exp:2026-12-01
+   ```
+
+Do **not** widen `severity` or set `exit-code: 0` to get a green build. That
+turns the gate off for everything, not just the finding in front of you.
+
 ### `devspace dev`: a CSS or JS edit does not show up
 
 Expected if you only sync `./app`. nginx serves `/shared/static`, not
