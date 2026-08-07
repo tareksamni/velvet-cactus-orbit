@@ -18,6 +18,13 @@ on:
     paths:
       - "app/**"
       - ".github/workflows/docker.yml"
+  # A vulnerability is published against code that has not changed. Without a
+  # schedule the image is only ever scanned when someone touches app/, so a CVE
+  # disclosed the day after a release goes unnoticed indefinitely. The weekly
+  # rebuild also picks up base-image OS patches, which the application's own
+  # requirements say nothing about.
+  schedule:
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:
