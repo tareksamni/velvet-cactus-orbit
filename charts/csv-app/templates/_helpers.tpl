@@ -110,7 +110,7 @@ http {
 
     # Uploads flow through this proxy, so the limit must be at least the
     # application's own limit or nginx rejects the request first.
-    client_max_body_size {{ div .Values.app.maxUploadBytes 1048576 }}m;
+    client_max_body_size {{ div (.Values.app.maxUploadBytes | int64) 1048576 }}m;
 
     upstream app {
         server 127.0.0.1:{{ .Values.app.port }};

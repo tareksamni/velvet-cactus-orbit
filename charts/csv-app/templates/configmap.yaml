@@ -15,9 +15,12 @@ data:
   APP_APP_NAME: {{ include "csv-app.name" . | quote }}
   APP_ENVIRONMENT: {{ .Values.app.environment | default .Release.Namespace | quote }}
   APP_LOG_LEVEL: {{ .Values.app.logLevel | quote }}
-  APP_MAX_UPLOAD_BYTES: {{ .Values.app.maxUploadBytes | quote }}
-  APP_MAX_ROWS_DISPLAY: {{ .Values.app.maxRowsDisplay | quote }}
-  APP_MAX_FILES_LISTED: {{ .Values.app.maxFilesListed | quote }}
+  # int64 is not decoration: Helm parses YAML numbers as float64, so a value
+  # like 26214400 renders as "2.62144e+07" and the application fails to parse
+  # it as an integer at startup.
+  APP_MAX_UPLOAD_BYTES: {{ .Values.app.maxUploadBytes | int64 | quote }}
+  APP_MAX_ROWS_DISPLAY: {{ .Values.app.maxRowsDisplay | int64 | quote }}
+  APP_MAX_FILES_LISTED: {{ .Values.app.maxFilesListed | int64 | quote }}
   APP_S3_BUCKET: {{ .Values.s3.bucket | quote }}
   APP_S3_PREFIX: {{ .Values.s3.prefix | quote }}
   APP_S3_REGION: {{ .Values.s3.region | quote }}
