@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# Local development / minikube.
+#
+# This file and values-prod.yaml are the case study's "re-using while creating
+# new environments" requirement made concrete: the templates are identical, only
+# these values differ.
+# ---------------------------------------------------------------------------
+
+replicaCount: 1
+
+image:
+  repository: csv-app
+  tag: dev
+  # The image is built straight into minikube's Docker daemon, so there is
+  # nothing to pull and Never avoids a pointless registry lookup.
+  pullPolicy: Never
+
+app:
+  environment: dev
+  logLevel: DEBUG
+  workers: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
+
+nginx:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 24Mi
+    limits:
+      memory: 64Mi
+
+service:
+  type: NodePort
+
+# Point boto3 at the in-cluster MinIO instead of AWS. Path-style addressing is
+# mandatory for MinIO.
+s3:
+  bucket: csv-uploads
+  endpointUrl: http://csv-app-minio:9000
+  forcePathStyle: true
+  accessKeyId: minioadmin
+  secretAccessKey: minioadmin
+
+minio:
+  enabled: true
+
+# Still enabled locally, because demonstrating the HPA is one of the case-study
+# requirements. minikube needs `minikube addons enable metrics-server`.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+
+# A single-node cluster cannot satisfy a zone spread or keep a PDB while
+# draining, so both are off locally.
+topologySpreadConstraints: []
+
+podDisruptionBudget:
+  enabled: false
