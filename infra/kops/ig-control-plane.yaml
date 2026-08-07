@@ -1,0 +1,94 @@
+---
+# ---------------------------------------------------------------------------
+# Control-plane instance groups — one per AZ.
+#
+# Each InstanceGroup becomes ONE AWS Auto Scaling Group. Three single-instance
+# ASGs (rather than one ASG of three) is deliberate: it pins exactly one
+# control-plane node per AZ, which is what keeps the etcd quorum spread
+# correctly. minSize == maxSize, so the Cluster Autoscaler leaves them alone.
+#
+# ON-DEMAND ONLY. A spot interruption on a control-plane node would take an
+# etcd member with it; the saving is not worth the risk.
+# ---------------------------------------------------------------------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: control-plane-eu-west-1a
+  labels:
+    kops.k8s.io/cluster: csv-app.k8s.local
+spec:
+  role: Master
+  machineType: m6i.large
+  minSize: 1
+  maxSize: 1
+  subnets:
+    - private-eu-west-1a
+  image: ami-0c0d3776ef525d5dd  # Ubuntu 22.04 LTS arm-free base; pin per region
+  rootVolumeType: gp3
+  rootVolumeSize: 64
+  rootVolumeEncryption: true
+  instanceMetadata:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  nodeLabels:
+    kops.k8s.io/instancegroup: control-plane-eu-west-1a
+    lifecycle: OnDemand
+  cloudLabels:
+    Project: csv-app
+    lifecycle: OnDemand
+    # Note: deliberately NO k8s.io/cluster-autoscaler/enabled tag here.
+    # The control plane must never be autoscaled.
+---
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: control-plane-eu-west-1b
+  labels:
+    kops.k8s.io/cluster: csv-app.k8s.local
+spec:
+  role: Master
+  machineType: m6i.large
+  minSize: 1
+  maxSize: 1
+  subnets:
+    - private-eu-west-1b
+  image: ami-0c0d3776ef525d5dd
+  rootVolumeType: gp3
+  rootVolumeSize: 64
+  rootVolumeEncryption: true
+  instanceMetadata:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  nodeLabels:
+    kops.k8s.io/instancegroup: control-plane-eu-west-1b
+    lifecycle: OnDemand
+  cloudLabels:
+    Project: csv-app
+    lifecycle: OnDemand
+---
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: control-plane-eu-west-1c
+  labels:
+    kops.k8s.io/cluster: csv-app.k8s.local
+spec:
+  role: Master
+  machineType: m6i.large
+  minSize: 1
+  maxSize: 1
+  subnets:
+    - private-eu-west-1c
+  image: ami-0c0d3776ef525d5dd
+  rootVolumeType: gp3
+  rootVolumeSize: 64
+  rootVolumeEncryption: true
+  instanceMetadata:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+  nodeLabels:
+    kops.k8s.io/instancegroup: control-plane-eu-west-1c
+    lifecycle: OnDemand
+  cloudLabels:
+    Project: csv-app
+    lifecycle: OnDemand

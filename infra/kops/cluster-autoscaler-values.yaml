@@ -1,0 +1,111 @@
+---
+# ---------------------------------------------------------------------------
+# Cluster Autoscaler configuration.
+#
+# kops installs the autoscaler itself via `clusterAutoscaler:` in cluster.yaml.
+# This file documents the equivalent Helm values, for the case where you prefer
+# to manage it as a separate release (autoscaler/cluster-autoscaler chart)
+# rather than as a kops addon.
+#
+# WHAT THIS COMPONENT DOES — and does not do:
+#
+#   The Cluster Autoscaler scales NODES. It watches for pods the scheduler
+#   could not place ("Pending", reason FailedScheduling: Insufficient cpu/memory)
+#   and raises the desired capacity of an ASG so a node appears for them. It
+#   does NOT look at CPU utilisation to scale up.
+#
+#   The HorizontalPodAutoscaler (charts/csv-app/templates/hpa.yaml) scales PODS,
+#   and it DOES look at utilisation.
+#
+#   Together: load rises -> HPA adds pods -> pods go Pending for want of room
+#   -> Cluster Autoscaler adds a node -> pods schedule.
+#
+#   Neither of these can run on minikube: one node, no ASG to call.
+#   See docs/kops-explained.md.
+# ---------------------------------------------------------------------------
+
+# ASGs are found by tag, not by name. Every InstanceGroup that should be
+# scalable carries the matching cloudLabels — see ig-nodes-*.yaml.
+autoDiscovery:
+  clusterName: csv-app.k8s.local
+  tags:
+    - k8s.io/cluster-autoscaler/enabled
+    - k8s.io/cluster-autoscaler/csv-app.k8s.local
+
+awsRegion: eu-west-1
+
+# Credentials come from IRSA, not from static keys. The role needs
+# autoscaling:Describe*, autoscaling:SetDesiredCapacity,
+# autoscaling:TerminateInstanceInAutoScalingGroup, and ec2:DescribeLaunchTemplateVersions.
+rbac:
+  serviceAccount:
+    create: true
+    name: cluster-autoscaler
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::000000000000:role/csv-app-cluster-autoscaler
+
+extraArgs:
+  # least-waste picks the node group that leaves the least idle CPU/memory
+  # after the Pending pods are placed. The default (random) will happily pick
+  # an expensive group when a cheaper one fits.
+  expander: least-waste
+
+  # The spot group spans three AZs. Without this the autoscaler can add every
+  # new node to one AZ, defeating the diversification the mixed instances
+  # policy exists to provide.
+  balance-similar-node-groups: true
+
+  # Query the EC2 API for instance types rather than using the compiled-in
+  # list, so new types and the mixed instances policy resolve correctly.
+  aws-use-static-instance-list: false
+
+  # --- scale-down tuning ------------------------------------------------
+  # A node under 50% utilisation for 10 minutes becomes a removal candidate.
+  # Shorter windows cause thrashing: the autoscaler removes a node, the HPA
+  # scales up, and the node is added straight back.
+  scale-down-utilization-threshold: 0.5
+  scale-down-unneeded-time: 10m
+  # Do not consider scale-down at all in the 10 minutes after adding a node.
+  scale-down-delay-after-add: 10m
+  scale-down-delay-after-delete: 10s
+  scale-down-delay-after-failure: 3m
+
+  # Nodes running pods with emptyDir volumes are still eligible for removal.
+  # The application uses an emptyDir for its shared static assets, and those
+  # assets are rebuilt from the image by the init container on the new pod, so
+  # there is nothing to lose. Leaving this at the default `true` would pin
+  # every application node in place and effectively disable scale-down.
+  skip-nodes-with-local-storage: false
+
+  # Do not evict pods from kube-system that have no controller — removing them
+  # would take a cluster component with the node.
+  skip-nodes-with-system-pods: true
+
+  # Give evicted pods time to shut down cleanly.
+  max-graceful-termination-sec: 120
+
+  # Give up on a node that has not registered within this window; usually means
+  # a spot request that could not be filled.
+  max-node-provision-time: 15m
+
+# The autoscaler must not run on the capacity it might decide to remove, so it
+# is pinned to the on-demand group.
+nodeSelector:
+  lifecycle: OnDemand
+
+# It is a singleton (leader-elected), and losing it means the cluster stops
+# scaling, so it gets a guaranteed slice.
+resources:
+  requests:
+    cpu: 100m
+    memory: 300Mi
+  limits:
+    memory: 500Mi
+
+podDisruptionBudget:
+  maxUnavailable: 1
+
+# Surfaces scale-up/scale-down decisions in the events log, which is the first
+# place to look when the cluster is not scaling as expected.
+extraEnv:
+  AWS_STS_REGIONAL_ENDPOINTS: regional

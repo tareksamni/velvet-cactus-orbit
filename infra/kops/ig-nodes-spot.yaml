@@ -1,0 +1,88 @@
+---
+# ---------------------------------------------------------------------------
+# Elastic worker instance group — SPOT, with a mixed instances policy.
+#
+# This is the "multiple ig, mixed instance group and lifecycle" requirement.
+# The InstanceGroup becomes ONE ASG whose MixedInstancesPolicy draws from
+# several instance types at spot prices.
+#
+# Why diversify the type list: spot capacity is per (instance type, AZ) pool.
+# An ASG allowed only m6i.large in one AZ competes for a single pool and gets
+# interrupted when that pool tightens. Four comparable types across three AZs
+# is twelve pools, so a shortage in one is absorbed by the others.
+#
+# All four types are 2 vCPU / 8 GiB so the autoscaler's capacity arithmetic
+# stays accurate whichever type it happens to receive — mixing sizes here would
+# make its Pending-pod predictions unreliable.
+# ---------------------------------------------------------------------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: nodes-spot
+  labels:
+    kops.k8s.io/cluster: csv-app.k8s.local
+spec:
+  role: Node
+  machineType: m6i.large     # the ASG's base type; overridden by the policy below
+  minSize: 2
+  maxSize: 20                # the autoscaler's ceiling for this group
+  subnets:
+    - private-eu-west-1a
+    - private-eu-west-1b
+    - private-eu-west-1c
+  image: ami-0c0d3776ef525d5dd
+  rootVolumeType: gp3
+  rootVolumeSize: 100
+  rootVolumeEncryption: true
+  instanceMetadata:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+
+  # --- the mixed instances policy ---------------------------------------
+  mixedInstancesPolicy:
+    instances:
+      - m6i.large
+      - m5.large
+      - m5a.large
+      - m5n.large
+    # 0 on-demand base and 0% on-demand above base: this group is 100% spot.
+    # The on-demand floor lives in nodes-ondemand, which is a separate ASG so
+    # its capacity can be reasoned about (and paid for) independently.
+    onDemandBase: 0
+    onDemandAboveBase: 0
+    # capacity-optimized picks the pools with the deepest spare capacity rather
+    # than the cheapest. Slightly higher cost, materially fewer interruptions —
+    # the right trade for anything serving traffic.
+    spotAllocationStrategy: capacity-optimized
+
+  nodeLabels:
+    kops.k8s.io/instancegroup: nodes-spot
+    lifecycle: Spot
+
+  # --- the taint ---------------------------------------------------------
+  # PreferNoSchedule, not NoSchedule. NoSchedule would keep every workload off
+  # spot unless it explicitly tolerates the taint, which is safe but wastes the
+  # capacity. PreferNoSchedule makes the scheduler treat spot as a last resort
+  # for untolerating pods while still allowing them there under pressure — and
+  # pods that DO tolerate it (see the chart's tolerations + node affinity) land
+  # here preferentially.
+  taints:
+    - spot=true:PreferNoSchedule
+
+  cloudLabels:
+    Project: csv-app
+    Environment: prod
+    lifecycle: Spot
+
+    # --- Cluster Autoscaler discovery ------------------------------------
+    k8s.io/cluster-autoscaler/enabled: "true"
+    k8s.io/cluster-autoscaler/csv-app.k8s.local: "owned"
+
+    # --- scale-from-zero hints -------------------------------------------
+    # The taint tag matters as much as the label: without it the autoscaler
+    # would believe a scaled-up node could host any Pending pod, add a node,
+    # and then watch the pod stay Pending because of the taint it did not know
+    # about — repeating until it hit maxSize.
+    k8s.io/cluster-autoscaler/node-template/label/lifecycle: "Spot"
+    k8s.io/cluster-autoscaler/node-template/taint/spot: "true:PreferNoSchedule"
+    k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage: "100G"

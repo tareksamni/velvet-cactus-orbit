@@ -1,0 +1,200 @@
+---
+# ---------------------------------------------------------------------------
+# kops Cluster specification.
+#
+# NEVER APPLIED. There is no AWS account in play and the case study explicitly
+# says a running cluster is not expected. This is a reviewable deliverable.
+#
+# Every non-obvious field is commented with WHAT AWS resource it produces and
+# WHY the value was chosen. See docs/kops-explained.md for the mental model.
+#
+# Apply with:
+#   export KOPS_STATE_STORE=s3://kops-state-<unique>
+#   kops create -f cluster.yaml -f ig-*.yaml
+#   kops update cluster --name csv-app.k8s.local --yes --admin
+#   kops validate cluster --wait 10m
+# ---------------------------------------------------------------------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: Cluster
+metadata:
+  # .k8s.local uses gossip DNS, so no Route53 hosted zone is required. For a
+  # real deployment use a domain you own (csv-app.example.com) and kops will
+  # manage the Route53 records instead.
+  name: csv-app.k8s.local
+spec:
+  # Where kops keeps cluster state. Must exist and be versioned before any
+  # kops command runs.
+  configBase: s3://kops-state-REPLACE-ME/csv-app.k8s.local
+
+  kubernetesVersion: 1.31.4
+  channel: stable
+
+  cloudProvider: aws
+
+  # --- networking --------------------------------------------------------
+  # Private topology: nodes and control plane sit in private subnets, egress
+  # via NAT, ingress only through load balancers in the public subnets.
+  topology:
+    dns:
+      type: Private
+  networking:
+    # Cilium gives NetworkPolicy support out of the box. kubenet would be
+    # cheaper but cannot enforce policy.
+    cilium:
+      enableNodePort: true
+
+  networkCIDR: 10.20.0.0/16
+  nonMasqueradeCIDR: 100.64.0.0/10
+
+  # Three AZs. Fewer would make the control plane's etcd quorum fragile, and
+  # spot capacity is markedly easier to obtain across three AZs than one.
+  subnets:
+    - name: private-eu-west-1a
+      type: Private
+      zone: eu-west-1a
+      cidr: 10.20.0.0/19
+    - name: private-eu-west-1b
+      type: Private
+      zone: eu-west-1b
+      cidr: 10.20.32.0/19
+    - name: private-eu-west-1c
+      type: Private
+      zone: eu-west-1c
+      cidr: 10.20.64.0/19
+    - name: public-eu-west-1a
+      type: Utility
+      zone: eu-west-1a
+      cidr: 10.20.96.0/22
+    - name: public-eu-west-1b
+      type: Utility
+      zone: eu-west-1b
+      cidr: 10.20.100.0/22
+    - name: public-eu-west-1c
+      type: Utility
+      zone: eu-west-1c
+      cidr: 10.20.104.0/22
+
+  # --- API server --------------------------------------------------------
+  api:
+    loadBalancer:
+      type: Internal
+      class: Network
+  # Lock the API to known networks. 0.0.0.0/0 here is a placeholder that a real
+  # deployment must replace with the office/VPN CIDRs.
+  kubernetesApiAccess:
+    - 0.0.0.0/0
+  sshAccess:
+    - 0.0.0.0/0
+
+  # --- etcd --------------------------------------------------------------
+  # Dedicated gp3 volumes, one member per AZ, so losing an AZ leaves quorum.
+  etcdClusters:
+    - name: main
+      manager:
+        backupRetentionDays: 30
+      etcdMembers:
+        - name: a
+          instanceGroup: control-plane-eu-west-1a
+          volumeType: gp3
+          volumeSize: 32
+          encryptedVolume: true
+        - name: b
+          instanceGroup: control-plane-eu-west-1b
+          volumeType: gp3
+          volumeSize: 32
+          encryptedVolume: true
+        - name: c
+          instanceGroup: control-plane-eu-west-1c
+          volumeType: gp3
+          volumeSize: 32
+          encryptedVolume: true
+    - name: events
+      etcdMembers:
+        - name: a
+          instanceGroup: control-plane-eu-west-1a
+          volumeType: gp3
+          volumeSize: 16
+          encryptedVolume: true
+        - name: b
+          instanceGroup: control-plane-eu-west-1b
+          volumeType: gp3
+          volumeSize: 16
+          encryptedVolume: true
+        - name: c
+          instanceGroup: control-plane-eu-west-1c
+          volumeType: gp3
+          volumeSize: 16
+          encryptedVolume: true
+
+  # --- workload identity (IRSA) ------------------------------------------
+  # This is what lets the application assume an AWS IAM role for S3 access
+  # WITHOUT any static credentials in the cluster. The ServiceAccount
+  # annotation in charts/csv-app/values-prod.yaml depends on this being on.
+  serviceAccountIssuerDiscovery:
+    discoveryStore: s3://csv-app-oidc-store-REPLACE-ME
+    enableAWSOIDCProvider: true
+  iam:
+    useServiceAccountExternalPermissions: true
+    allowContainerRegistry: true
+
+  # --- addons ------------------------------------------------------------
+  # metrics-server is REQUIRED, not optional: without it the HPA in
+  # charts/csv-app/templates/hpa.yaml reports <unknown> and never scales.
+  metricsServer:
+    enabled: true
+    insecure: false
+
+  certManager:
+    enabled: true
+
+  # Terminates TLS and fronts the Ingress defined in values-prod.yaml.
+  awsLoadBalancerController:
+    enabled: true
+
+  # The node-level autoscaler. kops installs and configures it, including the
+  # IAM permissions it needs to call the ASG API. It discovers which ASGs it
+  # may scale from the cloudLabels set on each InstanceGroup — see the
+  # ig-*.yaml files and infra/kops/cluster-autoscaler-values.yaml.
+  clusterAutoscaler:
+    enabled: true
+    expander: least-waste
+    # Lets the autoscaler keep similar groups (the spot IGs) balanced across
+    # AZs instead of piling every new node into one zone.
+    balanceSimilarNodeGroups: true
+    # Nodes below this utilisation for scaleDownUnneededTime become candidates
+    # for removal.
+    scaleDownUtilizationThreshold: "0.5"
+    scaleDownUnneededTime: 10m
+    scaleDownDelayAfterAdd: 10m
+    skipNodesWithLocalStorage: false
+    skipNodesWithSystemPods: true
+    awsUseStaticInstanceList: false
+
+  # EBS CSI driver, needed by anything requesting a PersistentVolume. Note the
+  # application itself does NOT need it — it shares static assets through a
+  # pod-scoped emptyDir (see docs/adr/0004).
+  cloudConfig:
+    awsEBSCSIDriver:
+      enabled: true
+      managed: true
+
+  # --- security ----------------------------------------------------------
+  kubeAPIServer:
+    auditLogPath: /var/log/kube-apiserver-audit.log
+    auditLogMaxAge: 30
+    auditLogMaxBackups: 10
+    auditLogMaxSize: 100
+  encryptionConfig: true
+
+  # Require IMDSv2 so a compromised pod cannot trivially read node credentials
+  # from the metadata service.
+  instanceMetadata:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+
+  # --- tagging -----------------------------------------------------------
+  cloudLabels:
+    Project: csv-app
+    Environment: prod
+    ManagedBy: kops
+    CostCentre: engineering

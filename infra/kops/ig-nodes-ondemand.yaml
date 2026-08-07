@@ -1,0 +1,65 @@
+---
+# ---------------------------------------------------------------------------
+# Baseline worker instance group — ON-DEMAND.
+#
+# This is the floor of the cluster: capacity that must not vanish at AWS's
+# convenience. Everything that cannot tolerate a two-minute interruption
+# notice lands here — ingress controllers, cert-manager, the cluster
+# autoscaler itself, and the application's minimum replicas.
+#
+# One InstanceGroup spanning three subnets becomes ONE ASG that balances
+# instances across all three AZs.
+# ---------------------------------------------------------------------------
+apiVersion: kops.k8s.io/v1alpha2
+kind: InstanceGroup
+metadata:
+  name: nodes-ondemand
+  labels:
+    kops.k8s.io/cluster: csv-app.k8s.local
+spec:
+  role: Node
+  machineType: m6i.large
+  # minSize is the always-on floor. maxSize is the ceiling the Cluster
+  # Autoscaler may raise the ASG's desired capacity to — it can never exceed
+  # this, so it doubles as the cost guardrail.
+  minSize: 3
+  maxSize: 6
+  subnets:
+    - private-eu-west-1a
+    - private-eu-west-1b
+    - private-eu-west-1c
+  image: ami-0c0d3776ef525d5dd
+  rootVolumeType: gp3
+  rootVolumeSize: 100
+  rootVolumeEncryption: true
+  instanceMetadata:
+    httpTokens: required
+    httpPutResponseHopLimit: 1
+
+  nodeLabels:
+    kops.k8s.io/instancegroup: nodes-ondemand
+    # Workloads select on this to pin themselves to uninterruptible capacity.
+    lifecycle: OnDemand
+
+  # No taint: this group accepts anything by default, which is what makes it
+  # the safe fallback when the spot group has no capacity.
+
+  cloudLabels:
+    Project: csv-app
+    Environment: prod
+    lifecycle: OnDemand
+
+    # --- Cluster Autoscaler discovery ------------------------------------
+    # These two tags are how the autoscaler finds this ASG. It enumerates ASGs
+    # carrying k8s.io/cluster-autoscaler/enabled AND a tag naming this cluster;
+    # anything without both is invisible to it and never scaled.
+    k8s.io/cluster-autoscaler/enabled: "true"
+    k8s.io/cluster-autoscaler/csv-app.k8s.local: "owned"
+
+    # --- scale-from-zero hints -------------------------------------------
+    # When an ASG has zero instances the autoscaler has no running node to
+    # inspect, so it cannot know what labels or taints a new node would carry
+    # and cannot tell whether a Pending pod would fit. These node-template tags
+    # tell it in advance.
+    k8s.io/cluster-autoscaler/node-template/label/lifecycle: "OnDemand"
+    k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage: "100G"
