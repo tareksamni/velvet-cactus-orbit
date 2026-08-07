@@ -71,6 +71,19 @@ dev:
       app.kubernetes.io/instance: csv-app
     container: app
 
+    # The chart runs the app container with a read-only root filesystem, which
+    # is right for production but breaks the dev loop: DevSpace's restart
+    # helper cannot write its /.devspace/start marker, so the container waits
+    # for a sync signal that never arrives, and nginx then crash-loops because
+    # its probe proxies to an app that never started.
+    #
+    # Patching it here rather than in values-dev.yaml keeps the production
+    # security posture intact everywhere except the ephemeral dev pod.
+    patches:
+      - op: replace
+        path: spec.containers[?(@.name=="app")].securityContext.readOnlyRootFilesystem
+        value: false
+
     # Live file sync: edits land in the running container immediately.
     sync:
       - path: ./app:/app
@@ -80,7 +93,13 @@ dev:
           - .venv/
           - tests/
           - Dockerfile
-        startContainer: true
+        # Deliberately NOT startContainer: true. That makes DevSpace hold the
+        # container until its restart helper writes /.devspace/start — but
+        # /.devspace is root-owned and the app runs as uid 10001, so the marker
+        # never appears and the container waits forever. The image already
+        # contains the code, so uvicorn starts immediately and --reload picks
+        # up whatever the sync lands a moment later.
+        printLogs: true
 
     # Replace the production command with a reloading one for development only.
     command: ["uvicorn"]
