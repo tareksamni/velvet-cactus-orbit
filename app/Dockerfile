@@ -28,7 +28,15 @@ WORKDIR /app
 COPY --chown=app:app . /app
 
 # Drop test-only material from the runtime image.
-RUN rm -rf /app/tests /app/requirements-dev.txt
+#
+# The chown matters: WORKDIR creates /app as root before COPY runs, and
+# `COPY --chown` only sets ownership on the copied contents, not on the
+# directory itself. Without this the runtime user can read /app but not write
+# to it, which breaks any file sync into the container during development.
+# In production the root filesystem is read-only anyway, so this changes
+# nothing there.
+RUN rm -rf /app/tests /app/requirements-dev.txt \
+ && chown app:app /app
 
 USER app
 EXPOSE 8000
