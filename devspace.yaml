@@ -50,9 +50,15 @@ deployments:
         replicaCount: 1
         autoscaling:
           enabled: false
+        # Use the runtime variables rather than repeating the image name.
+        # DevSpace rewrites any value that matches a built image with the
+        # full "repo:tag" reference, so a literal `repository: csv-app` here
+        # becomes `csv-app:dev` and the chart then appends its own tag —
+        # yielding csv-app:dev:dev. Referencing repo and tag separately is
+        # unambiguous and cannot be double-tagged.
         image:
-          repository: ${IMAGE}
-          tag: dev
+          repository: ${runtime.images.app.image}
+          tag: ${runtime.images.app.tag}
           pullPolicy: Never
 
 dev:
