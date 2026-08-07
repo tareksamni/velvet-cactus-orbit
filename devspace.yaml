@@ -24,9 +24,17 @@ images:
     image: ${IMAGE}
     dockerfile: ./app/Dockerfile
     context: ./app
-    # Build straight into the cluster's docker daemon; nothing to push.
-    custom:
-      skipImageArg: true
+    # Pin the tag instead of letting DevSpace generate one. The chart is
+    # deployed with pullPolicy: Never and image.tag: dev, so a generated tag
+    # would build an image the Deployment then fails to find.
+    tags:
+      - dev
+    # This image only ever exists inside the cluster's docker daemon.
+    skipPush: true
+    docker:
+      # Build straight into minikube's docker daemon — nothing to push, and no
+      # registry to configure.
+      preferMinikube: true
 
 deployments:
   csv-app:
