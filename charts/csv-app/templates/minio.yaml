@@ -1,0 +1,101 @@
+{{/*
+LOCAL DEVELOPMENT ONLY.
+
+MinIO stands in for S3 so the upload path is genuinely exercised on minikube
+rather than mocked. The application code is unchanged — boto3 just points at a
+different endpoint — so what runs locally is the same code path that would run
+against real S3.
+
+values-prod.yaml sets minio.enabled=false explicitly.
+*/}}
+{{- if .Values.minio.enabled }}
+{{- $fullName := printf "%s-minio" (include "csv-app.fullname" .) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "csv-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: {{ .Values.minio.rootUser | quote }}
+  MINIO_ROOT_PASSWORD: {{ .Values.minio.rootPassword | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "csv-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "csv-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: minio
+  template:
+    metadata:
+      labels:
+        {{- include "csv-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: minio
+    spec:
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: {{ $fullName }}
+          ports:
+            - name: api
+              containerPort: 9000
+            - name: console
+              containerPort: 9001
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+      volumes:
+        # Ephemeral on purpose: this is a demo dependency, not a durable store.
+        # Uploaded objects do not survive a pod restart, which is fine locally
+        # and is exactly why it is never enabled outside dev.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "csv-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000
+      targetPort: api
+      name: api
+    - port: 9001
+      targetPort: console
+      name: console
+  selector:
+    {{- include "csv-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+{{- end }}
