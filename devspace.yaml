@@ -83,6 +83,13 @@ dev:
       - op: replace
         path: spec.containers[?(@.name=="app")].securityContext.readOnlyRootFilesystem
         value: false
+      # The shared volume is mounted read-only in both containers, because at
+      # runtime nobody should write to it — the init container populates it
+      # once and that is that. In dev we DO need to write to it, so that a
+      # change to a css/js file reaches nginx (see the second sync path below).
+      - op: replace
+        path: spec.containers[?(@.name=="app")].volumeMounts[?(@.name=="shared-static")].readOnly
+        value: false
 
     # Live file sync: edits land in the running container immediately.
     sync:
@@ -100,6 +107,18 @@ dev:
         # contains the code, so uvicorn starts immediately and --reload picks
         # up whatever the sync lands a moment later.
         printLogs: true
+
+      # Static assets need a SECOND sync target, and this is not obvious.
+      #
+      # nginx does not serve /app/static — it serves /shared/static, which the
+      # static-init initContainer copied there once at pod start. An init
+      # container runs exactly once, so syncing a css change into /app leaves
+      # nginx serving the stale copy for the life of the pod.
+      #
+      # Syncing straight into the shared volume keeps nginx in step. The app
+      # container is the one doing the writing, which is why the volumeMount
+      # is patched writable above.
+      - path: ./app/static:/shared/static
 
     # Replace the production command with a reloading one for development only.
     command: ["uvicorn"]
