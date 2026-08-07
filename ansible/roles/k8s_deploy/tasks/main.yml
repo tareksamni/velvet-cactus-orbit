@@ -5,14 +5,14 @@
   kubernetes.core.k8s:
     api_version: v1
     kind: Namespace
-    name: "{{ namespace }}"
+    name: "{{ k8s_namespace }}"
     state: present
 
 - name: Deploy the Helm release
   kubernetes.core.helm:
     name: "{{ release_name }}"
     chart_ref: "{{ chart_path }}"
-    release_namespace: "{{ namespace }}"
+    release_namespace: "{{ k8s_namespace }}"
     create_namespace: false
     # Ordering matters: the chart defaults come first, then the environment
     # values file, then Ansible's generated overlay last so it wins.
@@ -24,14 +24,14 @@
     # Roll back automatically if the release does not become healthy, rather
     # than leaving a half-applied deployment behind.
     atomic: "{{ helm_atomic }}"
-  register: helm_result
+  register: k8s_deploy_helm_result
 
 - name: Wait for the deployment to be available
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: "{{ release_name }}"
-    namespace: "{{ namespace }}"
+    namespace: "{{ k8s_namespace }}"
     wait: true
     wait_condition:
       type: Available
@@ -41,6 +41,7 @@
 - name: Report the release state
   ansible.builtin.debug:
     msg: >-
-      Release '{{ release_name }}' is {{ helm_result.status.status | default('deployed') }}
-      in namespace '{{ namespace }}' (revision
-      {{ helm_result.status.revision | default('n/a') }}).
+      Release '{{ release_name }}' is
+      {{ k8s_deploy_helm_result.status.status | default('deployed') }}
+      in namespace '{{ k8s_namespace }}' (revision
+      {{ k8s_deploy_helm_result.status.revision | default('n/a') }}).

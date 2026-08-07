@@ -36,4 +36,4 @@ minio:
 # checksum annotation, which rolls the pods.
 nginx:
   config: |
-{{ nginx_config | indent(4, true) }}
+{{ app_config_nginx_config | indent(4, true) }}

@@ -26,7 +26,7 @@
 
     - name: Announce the target
       ansible.builtin.debug:
-        msg: "Deploying '{{ release_name }}' to environment '{{ env_name }}' in namespace '{{ namespace }}'"
+        msg: "Deploying '{{ release_name }}' to environment '{{ env_name }}' in namespace '{{ k8s_namespace }}'"
 
   roles:
     # Renders application config -> build/values.generated.yaml

@@ -10,7 +10,10 @@
 
 app_name: csv-app
 release_name: csv-app
-namespace: csv-app
+# Deliberately NOT called `namespace`: that is a Jinja2 reserved name (the
+# built-in namespace() object), so `{{ namespace }}` resolves to the function
+# rather than to this value.
+k8s_namespace: csv-app
 chart_path: "{{ playbook_dir }}/../charts/csv-app"
 generated_values: "{{ playbook_dir }}/build/values.generated.yaml"
 
