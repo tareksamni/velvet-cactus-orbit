@@ -38,14 +38,32 @@ check() {
 
 # --- connect ---------------------------------------------------------------
 log "Port-forwarding svc/$RELEASE_NAME -> localhost:$PORT"
-kubectl -n "$NAMESPACE" port-forward "svc/$RELEASE_NAME" "${PORT}:80" >/dev/null 2>&1 &
+pf_log="$(mktemp)"
+kubectl -n "$NAMESPACE" port-forward "svc/$RELEASE_NAME" "${PORT}:80" >"$pf_log" 2>&1 &
 pf_pid=$!
 
 for _ in $(seq 1 30); do
   curl -sf -m 2 "$BASE/healthz" >/dev/null 2>&1 && break
   sleep 1
 done
-curl -sf -m 5 "$BASE/healthz" >/dev/null || die "application did not become reachable on $BASE"
+
+if ! curl -sf -m 5 "$BASE/healthz" >/dev/null; then
+  # Surface the real reason rather than a bare timeout. A Service whose
+  # selector matches unintended pods shows up here as "does not have a named
+  # port", which is otherwise very hard to spot.
+  err "Application did not become reachable on $BASE"
+  echo >&2
+  err "kubectl port-forward said:"
+  sed 's/^/    /' "$pf_log" >&2
+  echo >&2
+  err "Service endpoints:"
+  kubectl -n "$NAMESPACE" get endpoints "$RELEASE_NAME" -o wide 2>&1 | sed 's/^/    /' >&2
+  err "Pods:"
+  kubectl -n "$NAMESPACE" get pods -o wide 2>&1 | sed 's/^/    /' >&2
+  rm -f "$pf_log"
+  exit 1
+fi
+rm -f "$pf_log"
 
 log "Running smoke checks against $BASE (sample: $(basename "$SAMPLE"), $EXPECTED_ROWS rows)"
 

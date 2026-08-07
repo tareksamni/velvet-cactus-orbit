@@ -35,13 +35,11 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "csv-app.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: minio
+      {{- include "csv-app.minioSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "csv-app.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: minio
+        {{- include "csv-app.minioSelectorLabels" . | nindent 8 }}
     spec:
       containers:
         - name: minio
@@ -96,6 +94,5 @@ spec:
       targetPort: console
       name: console
   selector:
-    {{- include "csv-app.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: minio
+    {{- include "csv-app.minioSelectorLabels" . | nindent 4 }}
 {{- end }}

@@ -35,6 +35,21 @@ app.kubernetes.io/name: {{ include "csv-app.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/*
+Selector labels for the dev-only MinIO deployment.
+
+These MUST NOT overlap with csv-app.selectorLabels. The application Service
+selects on name+instance alone, so if MinIO shared those labels the Service
+would match the MinIO pod too and load-balance application traffic onto it.
+Adding a distinguishing label to MinIO only would not help — a selector
+matches on a subset, so the app's Service would still match the MinIO pod.
+The name itself has to differ.
+*/}}
+{{- define "csv-app.minioSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "csv-app.name" . }}-minio
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
 {{- define "csv-app.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create -}}
 {{- default (include "csv-app.fullname" .) .Values.serviceAccount.name -}}
