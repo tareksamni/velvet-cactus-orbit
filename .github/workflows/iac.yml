@@ -1,0 +1,156 @@
+---
+name: Infrastructure as Code
+
+# Validate the Helm chart, Terraform, Ansible, YAML and shell scripts.
+#
+# Note what is NOT here: `terraform plan` or `apply`. There is no AWS account
+# bound to this repository, so the Terraform is validated statically only.
+# See ADR-0003 and infra/terraform/README.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "infra/**"
+      - "ansible/**"
+      - "scripts/**"
+      - ".github/workflows/iac.yml"
+  pull_request:
+    paths:
+      - "charts/**"
+      - "infra/**"
+      - "ansible/**"
+      - "scripts/**"
+      - ".github/workflows/iac.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.16.3
+
+      - name: Install kubeconform
+        run: |
+          curl -sSfL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+
+      - name: Lint
+        run: |
+          helm lint charts/csv-app -f charts/csv-app/values-dev.yaml
+          helm lint charts/csv-app -f charts/csv-app/values-prod.yaml
+
+      # Both environments must render and pass schema validation. This is what
+      # proves the chart genuinely serves multiple environments rather than
+      # only ever being exercised with the dev values.
+      - name: Render and validate every environment
+        run: |
+          for env in dev prod; do
+            echo "::group::$env"
+            helm template csv-app charts/csv-app -f "charts/csv-app/values-$env.yaml" \
+              | kubeconform -strict -summary -kubernetes-version 1.31.0 -
+            echo "::endgroup::"
+          done
+
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
+        with:
+          terraform_version: 1.10.3
+
+      - name: Format
+        run: terraform -chdir=infra/terraform fmt -check -recursive -diff
+
+      # -backend=false is what makes this work with no AWS account and no
+      # state bucket: it type-checks the configuration without contacting AWS.
+      - name: Init and validate
+        run: |
+          terraform -chdir=infra/terraform init -backend=false -input=false
+          terraform -chdir=infra/terraform validate -no-color
+
+      - uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4.0.0
+        with:
+          tflint_version: v0.54.0
+
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --chdir=infra/terraform --format compact
+
+      - name: Checkov policy scan
+        uses: bridgecrewio/checkov-action@38a95e98d734de90b74687a0fc94cfb4dcc9c169 # v12.2926.0
+        with:
+          directory: infra/terraform
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          # CKV_AWS_18 is access logging on the log bucket itself: enabling it
+          # would make the log bucket log to itself, which is a recursion, not
+          # a control.
+          skip_check: CKV_AWS_18
+
+  ansible:
+    name: Ansible
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: |
+          pip install ansible-core ansible-lint
+          ansible-galaxy collection install -r ansible/requirements.yml
+
+      - name: Syntax check both environments
+        working-directory: ansible
+        run: |
+          ansible-playbook site.yml --syntax-check -e env=dev
+          ansible-playbook site.yml --syntax-check -e env=prod
+
+      - name: ansible-lint
+        working-directory: ansible
+        run: ansible-lint --profile production || ansible-lint
+
+  static:
+    name: YAML and shell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: yamllint
+        run: |
+          pip install yamllint
+          # Helm templates are Go templates, not YAML, so they are excluded.
+          yamllint -c .yamllint.yml ansible/ infra/kops/ .github/
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck scripts/*.sh scripts/lib/*.sh infra/kops/*.sh

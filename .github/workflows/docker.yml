@@ -1,0 +1,137 @@
+---
+name: Docker image
+
+# Build the application image, scan it, and push it to the registry.
+#
+# Registry: GHCR by default, authenticated with the built-in GITHUB_TOKEN, so
+# this works in a fresh clone or fork with no secrets to configure. The case
+# study suggests Docker Hub; that is supported below but commented out because
+# it needs credentials this repository does not have.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "app/**"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/docker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build, scan and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      packages: write        # push to GHCR
+      security-events: write # upload the Trivy SARIF report
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3.2.0
+
+      - uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3.7.1
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ---------------------------------------------------------------
+      # Build once to a local image, scan it, and only push if it passes.
+      # Scanning after the push would mean shipping the vulnerability first.
+      # ---------------------------------------------------------------
+      - name: Build for scanning
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          context: ./app
+          load: true
+          push: false
+          tags: csv-app:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan for vulnerabilities
+        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # v0.29.0
+        with:
+          image-ref: csv-app:scan
+          format: table
+          exit-code: "1"          # fail the build
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true    # nothing to do about a vuln with no patch
+
+      - name: Generate an SBOM
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
+        with:
+          image: csv-app:scan
+          artifact-name: csv-app-sbom.spdx.json
+
+      # Pull requests build and scan but never push.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Docker Hub alternative, per the case study's suggestion. Needs
+      # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets.
+      #
+      # - name: Log in to Docker Hub
+      #   if: github.event_name != 'pull_request'
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          context: ./app
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Image"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "_Pull request: built and scanned, not pushed._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

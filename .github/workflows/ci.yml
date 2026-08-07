@@ -1,0 +1,62 @@
+---
+name: CI
+
+# Application code: lint, type-check, test, and confirm the published OpenAPI
+# contract is not stale.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; jobs opt in to more if they need it.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    name: Lint, type-check and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: app/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements-dev.txt
+
+      # These call the same scripts a developer runs via `make`, so CI and
+      # local development cannot drift apart.
+      - name: Lint and type-check
+        run: PYTHON=$(which python) ./scripts/lint.sh
+
+      - name: Test
+        run: PYTHON=$(which python) ./scripts/test.sh
+
+      - name: Check the committed OpenAPI spec is up to date
+        run: |
+          PYTHON=$(which python) ./scripts/gen-openapi.sh
+          if ! git diff --exit-code --quiet docs/openapi.yaml; then
+            echo "::error file=docs/openapi.yaml::docs/openapi.yaml is stale. Run 'make openapi' and commit the result."
+            git diff docs/openapi.yaml
+            exit 1
+          fi
+
+      - name: Summarise
+        if: always()
+        run: echo "### Application checks complete" >> "$GITHUB_STEP_SUMMARY"

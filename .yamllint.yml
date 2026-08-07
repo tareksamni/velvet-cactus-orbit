@@ -1,0 +1,25 @@
+---
+# Helm chart templates are Go templates that only become YAML after rendering,
+# so they are validated with `helm template | kubeconform` instead of yamllint.
+extends: default
+
+ignore: |
+  charts/*/templates/
+  .venv/
+  ansible/build/
+
+rules:
+  line-length:
+    max: 160
+    level: warning
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    # GitHub Actions' `on:` key is parsed as a boolean by strict YAML.
+    check-keys: false
+  document-start:
+    level: warning
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
