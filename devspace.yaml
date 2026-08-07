@@ -1,0 +1,129 @@
+version: v2beta1
+name: csv-app
+
+# ---------------------------------------------------------------------------
+# Local development inner loop.
+#
+# DevSpace deploys the SAME Helm chart that Ansible deploys and that CI lints,
+# so the development environment cannot drift from the deployment path. There
+# is no docker-compose stack duplicating the Kubernetes manifests.
+#
+#   devspace dev   ->  build, deploy, sync files, hot reload, forward ports
+#
+# Requires a running local cluster: `make up`.
+# ---------------------------------------------------------------------------
+
+vars:
+  IMAGE:
+    value: csv-app
+  APP_NAMESPACE:
+    value: csv-app
+
+images:
+  app:
+    image: ${IMAGE}
+    dockerfile: ./app/Dockerfile
+    context: ./app
+    # Build straight into the cluster's docker daemon; nothing to push.
+    custom:
+      skipImageArg: true
+
+deployments:
+  csv-app:
+    helm:
+      chart:
+        path: ./charts/csv-app
+      valuesFiles:
+        - ./charts/csv-app/values-dev.yaml
+      values:
+        # Dev-only overrides live HERE rather than in values-dev.yaml, so that
+        # values-dev.yaml stays an honest deployable environment instead of
+        # becoming a development-only special case.
+        replicaCount: 1
+        autoscaling:
+          enabled: false
+        image:
+          repository: ${IMAGE}
+          tag: dev
+          pullPolicy: Never
+
+dev:
+  app:
+    # Target the app container specifically — the pod also runs the nginx
+    # sidecar and a static-init initContainer, neither of which should be
+    # touched by the sync.
+    labelSelector:
+      app.kubernetes.io/name: csv-app
+      app.kubernetes.io/instance: csv-app
+    container: app
+
+    # Live file sync: edits land in the running container immediately.
+    sync:
+      - path: ./app:/app
+        excludePaths:
+          - __pycache__/
+          - "*.pyc"
+          - .venv/
+          - tests/
+          - Dockerfile
+        startContainer: true
+
+    # Replace the production command with a reloading one for development only.
+    command: ["uvicorn"]
+    args:
+      - main:app
+      - --host=0.0.0.0
+      - --port=8000
+      - --reload
+      - --reload-dir=/app
+
+    ports:
+      # nginx — this is the URL to open; it exercises the real serving path
+      # including static assets off the shared volume.
+      - port: "8080:8080"
+      # the app directly, useful for /docs and debugging past nginx
+      - port: "8000:8000"
+
+    open:
+      - url: http://localhost:8080
+
+    logs:
+      lastLines: 50
+
+profiles:
+  # `devspace dev --profile real-s3` points the app at a real bucket instead of
+  # the in-cluster MinIO.
+  - name: real-s3
+    patches:
+      - op: replace
+        path: deployments.csv-app.helm.values.minio.enabled
+        value: false
+      - op: replace
+        path: deployments.csv-app.helm.values.s3
+        value:
+          endpointUrl: ""
+          forcePathStyle: false
+
+commands:
+  # Delegate to the same make targets CI uses — one definition of "run the
+  # tests", not three.
+  test:
+    command: make test
+  lint:
+    command: make lint
+  openapi:
+    command: make openapi
+  smoke:
+    command: make smoke
+
+pipelines:
+  dev: |-
+    run_dependencies --all
+    ensure_pull_secrets --all
+    build_images --all
+    create_deployments --all
+    start_dev app
+  deploy: |-
+    run_dependencies --all
+    build_images --all
+    create_deployments --all
