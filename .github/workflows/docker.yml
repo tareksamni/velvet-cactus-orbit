@@ -97,8 +97,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # v0.29.0 internally pinned aquasecurity/setup-trivy@v0.2.2, and that tag
+      # was removed upstream — the action stopped resolving with "unable to
+      # find version v0.2.2". Pinning a SHA protects against the action's own
+      # code changing under us, but not against a transitive reference it makes
+      # by tag, so the only fix is to move to a release that points somewhere
+      # that still exists.
       - name: Scan for vulnerabilities
-        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # v0.29.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: csv-app:scan
           format: table
