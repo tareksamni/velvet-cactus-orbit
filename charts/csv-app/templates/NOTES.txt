@@ -1,0 +1,37 @@
+{{ include "csv-app.fullname" . }} deployed to namespace {{ .Release.Namespace }}.
+
+Pod layout (one pod, per the case-study requirement):
+  initContainer static-init  copies /app/static -> {{ .Values.sharedStatic.mountPath }} (emptyDir)
+  container     app          uvicorn on :{{ .Values.app.port }}
+  container     nginx        :{{ .Values.nginx.port }}, serves /static from the shared volume,
+                             proxies everything else to the app over loopback
+
+Reach it:
+{{- if .Values.ingress.enabled }}
+  http://{{ (first .Values.ingress.hosts).host }}/
+{{- else if eq .Values.service.type "NodePort" }}
+  minikube service {{ include "csv-app.fullname" . }} -n {{ .Release.Namespace }} --url
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "csv-app.fullname" . }} 8080:{{ .Values.service.port }}
+  then open http://localhost:8080/ (API docs at /docs)
+{{- end }}
+
+Object storage:
+{{- if .Values.minio.enabled }}
+  MinIO (local demo) at {{ .Values.s3.endpointUrl }}, bucket {{ .Values.s3.bucket }}
+  WARNING: MinIO data is on an emptyDir and does not survive a pod restart.
+{{- else }}
+  AWS S3, bucket {{ .Values.s3.bucket }} in {{ .Values.s3.region }}
+  {{- if not (include "csv-app.hasStaticCredentials" .) }}
+  Using the pod's ambient credentials (IRSA). Confirm the ServiceAccount is annotated:
+    kubectl -n {{ .Release.Namespace }} get sa {{ include "csv-app.serviceAccountName" . }} -o yaml
+  {{- end }}
+{{- end }}
+
+{{- if .Values.autoscaling.enabled }}
+
+Autoscaling: HPA {{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} replicas.
+  kubectl -n {{ .Release.Namespace }} get hpa {{ include "csv-app.fullname" . }}
+If the TARGETS column shows <unknown>, metrics-server is missing:
+  minikube addons enable metrics-server
+{{- end }}

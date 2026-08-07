@@ -1,0 +1,17 @@
+apiVersion: v2
+name: csv-app
+description: |
+  Nginx + CSV-processing web application in a single pod, sharing static assets
+  through a pod-scoped emptyDir volume, exposed by a Service and scaled by an HPA.
+type: application
+
+# Chart version tracks the packaging; appVersion tracks the application image.
+version: 0.1.0
+appVersion: "1.0.0"
+
+keywords:
+  - csv
+  - fastapi
+  - nginx
+maintainers:
+  - name: DevOps case study

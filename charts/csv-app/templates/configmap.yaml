@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "csv-app.fullname" . }}
+  labels:
+    {{- include "csv-app.labels" . | nindent 4 }}
+data:
+  # ---------------------------------------------------------------------
+  # Application configuration.
+  #
+  # Values here are supplied by Ansible (ansible/group_vars/<env>.yml), which
+  # owns application configuration; Helm owns the Kubernetes objects. The
+  # APP_ prefix matches pydantic-settings' env_prefix in app/config.py.
+  # ---------------------------------------------------------------------
+  APP_APP_NAME: {{ include "csv-app.name" . | quote }}
+  APP_ENVIRONMENT: {{ .Values.app.environment | default .Release.Namespace | quote }}
+  APP_LOG_LEVEL: {{ .Values.app.logLevel | quote }}
+  APP_MAX_UPLOAD_BYTES: {{ .Values.app.maxUploadBytes | quote }}
+  APP_MAX_ROWS_DISPLAY: {{ .Values.app.maxRowsDisplay | quote }}
+  APP_MAX_FILES_LISTED: {{ .Values.app.maxFilesListed | quote }}
+  APP_S3_BUCKET: {{ .Values.s3.bucket | quote }}
+  APP_S3_PREFIX: {{ .Values.s3.prefix | quote }}
+  APP_S3_REGION: {{ .Values.s3.region | quote }}
+  {{- if .Values.s3.endpointUrl }}
+  APP_S3_ENDPOINT_URL: {{ .Values.s3.endpointUrl | quote }}
+  {{- end }}
+  APP_S3_FORCE_PATH_STYLE: {{ .Values.s3.forcePathStyle | quote }}
+
+  # ---------------------------------------------------------------------
+  # Nginx configuration for the sidecar. Mounted at /etc/nginx/nginx.conf.
+  # ---------------------------------------------------------------------
+  nginx.conf: |
+    {{- include "csv-app.nginxConfig" . | nindent 4 }}

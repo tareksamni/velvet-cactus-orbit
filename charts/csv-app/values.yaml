@@ -1,0 +1,192 @@
+# ---------------------------------------------------------------------------
+# Base values. These are the safe defaults; per-environment files override only
+# what actually differs (values-dev.yaml, values-prod.yaml). That difference is
+# the whole point of using Helm here — a new environment is a values file, not
+# a copy of the manifests.
+# ---------------------------------------------------------------------------
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicaCount: 2
+
+image:
+  repository: csv-app
+  tag: ""          # defaults to .Chart.AppVersion when empty
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# --- nginx sidecar ---------------------------------------------------------
+# Runs in the SAME pod as the app (a requirement of the case study) and serves
+# the shared static assets directly, proxying everything else to 127.0.0.1.
+nginx:
+  image:
+    repository: nginx
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  port: 8080
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  # Rendered into the ConfigMap. Ansible overrides this with its own template
+  # so that application configuration lives in Ansible (see ansible/roles/app_config).
+  config: ""
+
+# --- application container -------------------------------------------------
+app:
+  port: 8000
+  workers: 2
+  logLevel: INFO
+  maxUploadBytes: 26214400   # 25 MiB
+  maxRowsDisplay: 1000
+  maxFilesListed: 100
+  # Requests are mandatory, not cosmetic: without them the HPA reports
+  # <unknown> for its CPU target and never scales at all.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+# --- shared static assets --------------------------------------------------
+# The "shared storage (not NFS)" requirement. An initContainer copies the
+# image's /app/static into an emptyDir; nginx and the app both mount it
+# read-only. Pod-scoped, no CSI driver, no storage class, identical behaviour
+# on minikube and on a real cluster. See docs/adr/0004.
+sharedStatic:
+  mountPath: /shared/static
+  sizeLimit: 64Mi
+
+# --- object storage --------------------------------------------------------
+s3:
+  bucket: csv-uploads
+  prefix: uploads
+  region: us-east-1
+  # Empty endpoint => real AWS S3. Set to the MinIO service for local dev.
+  endpointUrl: ""
+  forcePathStyle: false
+  # Prefer IRSA in AWS (serviceAccount.annotations) over static credentials.
+  # When these are set a Secret is created; existingSecret takes precedence.
+  accessKeyId: ""
+  secretAccessKey: ""
+  existingSecret: ""
+
+# --- service ---------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: csv-app.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# --- autoscaling -----------------------------------------------------------
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      # Without a stabilisation window the HPA flaps as load oscillates.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  # In AWS: eks.amazonaws.com/role-arn or the kops IRSA equivalent, so the pod
+  # gets S3 access without any static credentials.
+  annotations: {}
+
+# --- scheduling ------------------------------------------------------------
+# The kops spot instance group is tainted, so tolerate it and prefer it — this
+# is what makes the mixed spot/on-demand split actually get used rather than
+# merely declared. Ignored by minikube, which has one untainted node.
+tolerations:
+  - key: spot
+    operator: Equal
+    value: "true"
+    effect: PreferNoSchedule
+
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        preference:
+          matchExpressions:
+            - key: lifecycle
+              operator: In
+              values: ["Spot"]
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: csv-app
+
+nodeSelector: {}
+
+# --- security --------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+podAnnotations: {}
+podLabels: {}
+
+# --- local development only -------------------------------------------------
+# MinIO stands in for S3 so the upload path is genuinely exercised on minikube.
+# Never enabled outside dev; values-prod.yaml sets this to false explicitly.
+minio:
+  enabled: false
+  image:
+    repository: minio/minio
+    tag: RELEASE.2024-12-18T13-15-44Z
+  rootUser: minioadmin
+  rootPassword: minioadmin
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
