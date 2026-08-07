@@ -42,9 +42,17 @@ class StoredObject:
 
 
 def _safe_filename(name: str) -> str:
-    """Strip any path components and characters that complicate S3 keys."""
-    base = PurePosixPath(name.replace("\\", "/")).name or "upload.csv"
+    """Strip path components and any character that complicates an S3 key.
+
+    Note that ``PurePosixPath("../../../").name`` is ``".."``, so dot-only
+    names are rejected explicitly rather than being allowed through as a
+    literal key segment.
+    """
+    base = PurePosixPath(name.replace("\\", "/")).name
+    if not base or set(base) <= {"."}:
+        return "upload.csv"
     cleaned = "".join(c if c.isalnum() or c in "._-" else "-" for c in base)
+    cleaned = cleaned.lstrip(".-")
     return cleaned[:120] or "upload.csv"
 
 
