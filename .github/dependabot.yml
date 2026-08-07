@@ -1,0 +1,62 @@
+---
+# Automated dependency updates.
+#
+# This exists because of how the trivy scan broke: nothing was watching the
+# dependencies, so the first sign of a published CVE was a red build. Three of
+# the six findings were in python-multipart, which parses every upload this
+# application accepts, and three were in Starlette, in the StaticFiles and
+# request.form() paths the application actually uses.
+#
+# Dependabot turns that into a pull request the week the fix ships, with the
+# existing test suite and image scan as the gate.
+version: 2
+
+updates:
+  # --- application dependencies -------------------------------------------
+  - package-ecosystem: pip
+    directory: /app
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels: [dependencies, python]
+    commit-message:
+      prefix: "fix(deps)"
+      prefix-development: "chore(deps)"
+    groups:
+      # One PR for the routine noise, so review attention goes to the majors.
+      python-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # --- base image ----------------------------------------------------------
+  # Catches python:3.12-slim rebuilds carrying OS-level security fixes, which
+  # the application's own requirements say nothing about.
+  - package-ecosystem: docker
+    directory: /app
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: "fix(deps)"
+
+  # --- GitHub Actions ------------------------------------------------------
+  # Every action is pinned to a commit SHA, which is right for supply-chain
+  # safety but means nothing updates on its own — and a pinned action can still
+  # break when it references another action BY TAG internally, which is exactly
+  # how trivy-action@0.29.0 stopped resolving.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
