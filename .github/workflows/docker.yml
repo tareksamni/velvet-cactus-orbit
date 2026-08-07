@@ -104,20 +104,50 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # v0.29.0 internally pinned aquasecurity/setup-trivy@v0.2.2, and that tag
-      # was removed upstream — the action stopped resolving with "unable to
-      # find version v0.2.2". Pinning a SHA protects against the action's own
-      # code changing under us, but not against a transitive reference it makes
-      # by tag, so the only fix is to move to a release that points somewhere
-      # that still exists.
-      - name: Scan for vulnerabilities
+      # ---------------------------------------------------------------
+      # Scanned twice on purpose, and the order matters.
+      #
+      # The first pass writes SARIF and never fails, so findings always reach
+      # the Security tab — including on the run that is about to go red. A
+      # single failing pass would leave the evidence only in a build log that
+      # ages out.
+      #
+      # On the pinned version: v0.29.0 referenced aquasecurity/setup-trivy@v0.2.2
+      # internally, and that tag was deleted upstream, so the action stopped
+      # resolving. Pinning a SHA protects against the action's own code changing
+      # under us, but not against a reference it makes BY TAG to another action.
+      # Dependabot now watches these (see .github/dependabot.yml).
+      # ---------------------------------------------------------------
+      - name: Scan for vulnerabilities (report)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: csv-app:scan
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+
+      - name: Upload results to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+      # Second pass is the gate. The vulnerability database is cached from the
+      # first, so this costs seconds rather than a second full download.
+      - name: Scan for vulnerabilities (gate)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: csv-app:scan
           format: table
           exit-code: "1"          # fail the build
           severity: HIGH,CRITICAL
-          ignore-unfixed: true    # nothing to do about a vuln with no patch
+          # Nothing to do about a vulnerability with no patch available — it
+          # would block every build with no action a developer could take.
+          # These still show up in the SARIF report above.
+          ignore-unfixed: true
 
       - name: Generate an SBOM
         uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75 # v0.17.9
