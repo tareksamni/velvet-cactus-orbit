@@ -37,7 +37,8 @@ ansible/build/
 # Terraform — never commit state or real variable values
 # ---------------------------------------------------------------------------
 .terraform/
-.terraform.lock.hcl
+# .terraform.lock.hcl IS committed on purpose — it pins provider versions so
+# every apply resolves the same providers.
 *.tfstate
 *.tfstate.*
 crash.log
