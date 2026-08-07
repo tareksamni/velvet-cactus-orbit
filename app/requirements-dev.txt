@@ -6,6 +6,6 @@ httpx==0.28.1
 moto[s3]==5.2.2
 ruff==0.16.1
 mypy==1.14.1
-types-PyYAML==6.0.12.20241230
+types-PyYAML==6.0.12.20260724
 boto3-stubs[s3]==1.43.64
 PyYAML==6.0.3
