@@ -45,6 +45,14 @@ judgement calls is in **[`ASSUMPTIONS.md`](ASSUMPTIONS.md)**.
 requested, and none was built. It is the largest production gap here and is
 called out rather than left to be found.
 
+There is also **no ingress controller and no platform add-on layer** —
+cert-manager, external-dns, external-secrets. The brief asks for a Service, so a
+Service is what is exercised; the Ingress ships as a disabled template that
+`values-prod.yaml` enables. A real deployment would add that layer once per
+cluster and drive the whole lot with **ArgoCD** rather than `helm upgrade` from
+a pipeline. Reasoning in
+[ADR-0010](docs/adr/0010-no-ingress-controller-or-platform-addons.md).
+
 ---
 
 ## Requirements → where they are satisfied
@@ -67,7 +75,7 @@ Each row is marked **verified** (actually run and asserted on a live cluster) or
 |---|---|---|
 | Nginx + web app in the **same pod** | [`deployment.yaml`](charts/csv-app/templates/deployment.yaml) | **verified** — `2/2` containers, asserted by `make smoke` |
 | Sharing public files via shared storage (**not NFS**) | `emptyDir` + `static-init` init container ([ADR-0004](docs/adr/0004-emptydir-for-shared-static-assets.md)) | **verified** — `X-Served-By: nginx-shared-volume` asserted |
-| Expose with a Service | [`service.yaml`](charts/csv-app/templates/service.yaml) | **verified** |
+| Expose with a Service | [`service.yaml`](charts/csv-app/templates/service.yaml) | **verified** — no ingress controller is installed; the Ingress template ships disabled ([ADR-0010](docs/adr/0010-no-ingress-controller-or-platform-addons.md)) |
 | Auto scaling for deployment | [`hpa.yaml`](charts/csv-app/templates/hpa.yaml) | **verified** — scaled **2 → 4** at 281% CPU under `make load` |
 | Configuration management with Ansible | [`ansible/`](ansible/) — `group_vars/` + `app_config` role | **verified** — playbook performs the deploy |
 | Helm to render K8s objects for new environments | [`charts/csv-app/`](charts/csv-app/) + `values-dev.yaml` / `values-prod.yaml` | **verified** — both render and pass `kubeconform` |
@@ -86,7 +94,7 @@ Each row is marked **verified** (actually run and asserted on a live cluster) or
 
 | Requirement | Where |
 |---|---|
-| Documentation | [`docs/`](docs/) — architecture, kops explainer, decisions, 9 ADRs, runbook |
+| Documentation | [`docs/`](docs/) — architecture, kops explainer, decisions, 10 ADRs, runbook |
 | Architecture diagram | [`docs/architecture.md`](docs/architecture.md) — 7 Mermaid diagrams |
 
 ### Beyond the brief

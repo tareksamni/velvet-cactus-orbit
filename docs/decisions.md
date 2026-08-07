@@ -18,6 +18,7 @@ alternatives, and consequences.
 | [0007](adr/0007-glacier-ir-before-deep-archive.md) | Glacier Instant Retrieval before Deep Archive |
 | [0008](adr/0008-helm-renders-k8s-ansible-owns-config.md) | Helm renders objects; Ansible owns application config |
 | [0009](adr/0009-devspace-inner-loop-over-docker-compose.md) | DevSpace against the real chart, not docker-compose |
+| [0010](adr/0010-no-ingress-controller-or-platform-addons.md) | No ingress controller or platform add-ons in the demo; ArgoCD for real GitOps |
 
 ---
 
@@ -101,6 +102,33 @@ owns Kubernetes **objects**, and the generated values file is the handoff
 The concrete payoff is that nginx's `client_max_body_size` is *derived* from the
 application's upload limit, so the two cannot silently disagree.
 
+## What is deliberately absent from the cluster
+
+The application is exposed with a Service, which is what the brief asks for.
+There is **no ingress controller installed** — the chart carries a complete
+Ingress template, disabled by default and enabled in `values-prod.yaml`, but
+nothing has ever been served through one
+([ADR-0010](adr/0010-no-ingress-controller-or-platform-addons.md)).
+
+The same goes for the rest of the cluster-wide layer: cert-manager,
+external-dns, external-secrets, the AWS Load Balancer Controller. These are
+**platform components, not application components** — you install cert-manager
+once per cluster, not once per service — so bundling them into this chart would
+be wrong even in production. That boundary is also the strongest argument for
+the separate platform repository discussed in
+[ADR-0002](adr/0002-monorepo-vs-separate-infra-repo.md).
+
+Worth noting for anyone reaching for the obvious controller: **ingress-nginx was
+retired in 2026**. A new deployment should be starting from Gateway API, or —
+on AWS — from the AWS Load Balancer Controller, which `values-prod.yaml` already
+assumes.
+
+And for actually deploying all of it, I would use **ArgoCD** rather than the
+`helm upgrade` from a pipeline that `ansible/site.yml` does here. Pull beats
+push: the controller runs in the cluster, reconciles continuously against git,
+detects drift instead of silently reverting it at the next deploy, and needs no
+cluster credentials sitting in CI. ADR-0010 sketches the App-of-Apps shape.
+
 ## What I would change for a real production system
 
 Honestly, in rough priority order:
@@ -110,15 +138,22 @@ Honestly, in rough priority order:
    application-level session.
 2. **Rate limiting and upload quotas.** Nothing stops one client filling the
    bucket.
-3. **Observability.** Structured logs go to stdout, which is a start.
+3. **An ingress controller and TLS**, plus the platform add-ons that go with it
+   — cert-manager for certificates, external-dns for the Route53 record,
+   external-secrets where workload identity is not an option. Gateway API or
+   the AWS Load Balancer Controller, not ingress-nginx
+   ([ADR-0010](adr/0010-no-ingress-controller-or-platform-addons.md)).
+4. **ArgoCD** for deployment, so git is the declared state and drift is
+   reconciled rather than discovered.
+5. **Observability.** Structured logs go to stdout, which is a start.
    A real system needs metrics (Prometheus), traces, and alerts on upload
    failure rate and S3 error rate — not just probes.
-4. **Reconsider the Deep Archive transition**, or implement a restore workflow.
+6. **Reconsider the Deep Archive transition**, or implement a restore workflow.
    Today, viewing a file older than 90 days would fail.
-5. **Aggregate small objects before archiving.** Glacier's 128 KB minimum
+7. **Aggregate small objects before archiving.** Glacier's 128 KB minimum
    billable size means the current policy may cost more than it saves for 45 KB
    files ([ADR-0007](adr/0007-glacier-ir-before-deep-archive.md)).
-6. **Split the infrastructure out**, if this grew past one service
+8. **Split the infrastructure out**, if this grew past one service
    ([ADR-0002](adr/0002-monorepo-vs-separate-infra-repo.md)).
-7. **Actually apply the Terraform**, in a sandbox account, behind OIDC
+9. **Actually apply the Terraform**, in a sandbox account, behind OIDC
    ([ADR-0003](adr/0003-terraform-not-bound-to-aws-account-oidc.md)).

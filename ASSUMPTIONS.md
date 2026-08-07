@@ -96,6 +96,21 @@ Other assumptions in the parser:
   the two scale and deploy as a unit, so nginx replica count is dictated by
   application load rather than by static-serving load. That is a trade-off
   inherited from the brief, not a recommendation.
+- **"Expose application with creating service object" was taken at face value.**
+  The chart carries a complete Ingress template, but it is disabled by default
+  and **no ingress controller is installed** — locally the app is reached over a
+  NodePort or a port-forward. `values-prod.yaml` shows what the Ingress would
+  look like on AWS. TLS termination, host routing and certificate issuance are
+  therefore unverified
+  ([ADR-0010](docs/adr/0010-no-ingress-controller-or-platform-addons.md)).
+  Note also that ingress-nginx was retired in 2026, so a real deployment should
+  start from Gateway API or the AWS Load Balancer Controller rather than the
+  historically obvious choice.
+- **The cluster-wide platform layer is absent by design**, not by oversight:
+  cert-manager, external-dns, external-secrets and the AWS Load Balancer
+  Controller. These are installed once per cluster by whoever owns the platform,
+  not bundled into an application chart — so shipping them here would be wrong
+  even in production.
 - **"Implement auto scaling for deployment" means an HPA on CPU and memory.** I
   assumed no custom or external metrics backend exists.
 - **metrics-server is available** on the target cluster.
@@ -213,7 +228,11 @@ one:
 | Not built | What I would add |
 |---|---|
 | Authentication / authorisation | OIDC at the ingress, or app-level sessions |
+| **Ingress controller** | Gateway API, or the AWS Load Balancer Controller on AWS — not ingress-nginx, which was retired in 2026 (ADR-0010) |
 | TLS inside the cluster | ALB termination + cert-manager (both configured in `values-prod.yaml`, never applied) |
+| **DNS records** | external-dns, driven from the Ingress annotation rather than the console |
+| **Secret sync** | external-secrets from Secrets Manager/SSM — though with IRSA there is no secret to sync (ADR-0003) |
+| **GitOps deployment** | ArgoCD App-of-Apps, pulling from git and reconciling drift, instead of `helm upgrade` pushed from a pipeline (ADR-0010) |
 | Rate limiting | nginx `limit_req`, or WAF rules at the ALB |
 | Multi-tenancy | A tenant prefix in the S3 key and an authorisation check |
 | Metrics, tracing, alerting | Prometheus + OpenTelemetry; alert on upload failure and S3 error rates |
