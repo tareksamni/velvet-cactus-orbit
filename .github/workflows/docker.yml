@@ -29,7 +29,10 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # The application name, not the repository name — the published image is
+  # ghcr.io/<owner>/csv-app, which is what charts/csv-app/values-prod.yaml and
+  # ansible/group_vars/prod.yml reference.
+  APP_NAME: csv-app
 
 jobs:
   build:
@@ -49,11 +52,29 @@ jobs:
 
       - uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3.7.1
 
+      # GHCR rejects any uppercase character in a repository path, and GitHub
+      # usernames and org names are free to contain them. Lowercasing the owner
+      # here avoids a push failure that only shows up for some accounts.
+      - name: Resolve the image name
+        id: image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: echo "ref=${REGISTRY}/${OWNER,,}/${APP_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Derive tags and labels
         id: meta
         uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5.6.1
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.image.outputs.ref }}
+          # image.source is what links the published package to this repository
+          # in the GitHub UI, and what makes the package inherit the repo's
+          # visibility rules. metadata-action sets it, but being explicit means
+          # it survives someone trimming the defaults later.
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.title=${{ env.APP_NAME }}
+            org.opencontainers.image.description=Parses stock-on-hand CSV exports and archives them to S3
+            org.opencontainers.image.licenses=NONE
           tags: |
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
@@ -119,6 +140,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # This is a multi-platform build, so the labels above land on the
+          # per-architecture manifests rather than on the OCI index. GitHub
+          # reads the INDEX to describe and link the package, so without
+          # annotations the GHCR page shows no description and no repo link.
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
@@ -130,6 +156,10 @@ jobs:
             echo "### Image"
             echo '```'
             echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo "Pull with:"
+            echo '```'
+            echo "docker pull ${{ steps.image.outputs.ref }}:latest"
             echo '```'
             if [ "${{ github.event_name }}" = "pull_request" ]; then
               echo "_Pull request: built and scanned, not pushed._"

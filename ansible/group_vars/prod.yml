@@ -7,7 +7,7 @@ values_file: values-prod.yaml
 app_log_level: INFO
 app_workers: 4
 
-image_repository: ghcr.io/OWNER/csv-app
+image_repository: ghcr.io/tareksamni/csv-app
 image_tag: ""            # falls back to Chart.appVersion; CI sets this explicitly
 image_pull_policy: IfNotPresent
 

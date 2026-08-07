@@ -7,9 +7,16 @@
 replicaCount: 3
 
 image:
-  repository: ghcr.io/OWNER/csv-app   # set by CI to the built image
-  tag: ""                             # defaults to Chart.appVersion
+  # Published by .github/workflows/docker.yml on every push to main.
+  repository: ghcr.io/tareksamni/csv-app
+  # Empty falls back to Chart.appVersion. CI sets an immutable sha-<short> tag
+  # for a real deploy — "latest" moves, which makes a rollback ambiguous.
+  tag: ""
   pullPolicy: IfNotPresent
+
+# The GHCR package is private until made public. A private package needs a pull
+# secret here (a PAT with read:packages); a public one needs nothing.
+imagePullSecrets: []
 
 app:
   environment: prod
