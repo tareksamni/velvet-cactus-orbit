@@ -6,11 +6,11 @@ fastapi==0.141.1
 # takes form uploads). Naming it here makes the security floor explicit and
 # enforced rather than incidental.
 starlette==1.4.1
-uvicorn[standard]==0.34.0
+uvicorn[standard]==0.52.1
 jinja2==3.1.6
 # 0.0.20 had an arbitrary file write via path traversal (CVE-2026-24486) plus
 # two DoS issues. This library parses every upload the app accepts.
 python-multipart==0.0.32
-boto3==1.35.92
-pydantic==2.10.4
-pydantic-settings==2.7.1
+boto3==1.43.64
+pydantic==2.13.4
+pydantic-settings==2.14.2
