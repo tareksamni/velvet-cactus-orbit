@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Tear down the local cluster.
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 require_cmd minikube "make bootstrap" || exit 1

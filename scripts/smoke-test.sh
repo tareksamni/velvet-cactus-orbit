@@ -6,6 +6,7 @@
 # `make demo` genuinely verifies the case-study requirements instead of just
 # producing output that looks plausible.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 require_cmd kubectl "https://kubernetes.io/docs/tasks/tools/" || exit 1
@@ -22,7 +23,11 @@ PORT="${SMOKE_PORT:-18080}"
 BASE="http://127.0.0.1:${PORT}"
 pf_pid=""
 
-cleanup() { [[ -n "$pf_pid" ]] && kill "$pf_pid" 2>/dev/null || true; }
+cleanup() {
+  if [[ -n "$pf_pid" ]]; then
+    kill "$pf_pid" 2>/dev/null || true
+  fi
+}
 trap cleanup EXIT
 
 failures=0

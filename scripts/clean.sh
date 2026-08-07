@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Remove build artifacts and caches. Does not touch the cluster.
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 log "Removing build artifacts and caches"
 rm -rf \

@@ -5,6 +5,7 @@
 # Building inside the cluster's daemon means there is nothing to push and no
 # registry to configure, which is why the dev values use pullPolicy: Never.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 require_cmd docker "https://docs.docker.com/engine/install/" || exit 1

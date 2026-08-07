@@ -4,6 +4,7 @@
 #
 # Usage: scripts/deploy.sh [dev|prod]
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 ENV_NAME="${1:-dev}"
@@ -23,7 +24,7 @@ if [[ "$ENV_NAME" == "prod" ]]; then
 fi
 
 log "Deploying environment '$ENV_NAME'"
-cd "$REPO_ROOT/ansible"
+cd "$REPO_ROOT/ansible" || exit 1
 "$ANSIBLE" site.yml -e "env=$ENV_NAME"
 
 success "Deployed '$ENV_NAME'"

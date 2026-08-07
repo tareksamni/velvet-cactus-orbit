@@ -7,6 +7,7 @@
 # calling the AWS ASG API, and a single-node local cluster has no ASG.
 # See docs/kops-explained.md.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 require_cmd kubectl "https://kubernetes.io/docs/tasks/tools/" || exit 1
@@ -20,7 +21,9 @@ workers=()
 
 cleanup() {
   for pid in "${workers[@]}"; do kill "$pid" 2>/dev/null || true; done
-  [[ -n "$pf_pid" ]] && kill "$pf_pid" 2>/dev/null || true
+  if [[ -n "$pf_pid" ]]; then
+    kill "$pf_pid" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 
@@ -56,11 +59,25 @@ done
 
 log "Watching the HPA (Ctrl-C to stop early)"
 echo >&2
+# Read the fields by name rather than by position: the TARGETS column contains
+# spaces ("cpu: 11%/70%, memory: 48%/80%"), so splitting on whitespace shifts
+# every column after it.
 while [[ $SECONDS -lt $deadline ]]; do
-  kubectl -n "$NAMESPACE" get hpa "$RELEASE_NAME" --no-headers 2>/dev/null \
-    | awk '{printf "  targets=%-18s min=%-3s max=%-3s replicas=%s\n", $3, $4, $5, $6}' >&2
+  replicas="$(kubectl -n "$NAMESPACE" get hpa "$RELEASE_NAME" -o jsonpath='{.status.currentReplicas}' 2>/dev/null)"
+  desired="$(kubectl -n "$NAMESPACE" get hpa "$RELEASE_NAME" -o jsonpath='{.status.desiredReplicas}' 2>/dev/null)"
+  cpu="$(kubectl -n "$NAMESPACE" get hpa "$RELEASE_NAME" \
+    -o jsonpath='{.status.currentMetrics[?(@.resource.name=="cpu")].resource.current.averageUtilization}' 2>/dev/null)"
+  mem="$(kubectl -n "$NAMESPACE" get hpa "$RELEASE_NAME" \
+    -o jsonpath='{.status.currentMetrics[?(@.resource.name=="memory")].resource.current.averageUtilization}' 2>/dev/null)"
+  printf '  cpu=%-6s memory=%-6s replicas=%s -> %s\n' \
+    "${cpu:-?}%" "${mem:-?}%" "${replicas:-?}" "${desired:-?}" >&2
   sleep 10
 done
+
+echo >&2
+log "Scaling decisions the HPA actually made:"
+kubectl -n "$NAMESPACE" describe hpa "$RELEASE_NAME" 2>/dev/null \
+  | grep -E "SuccessfulRescale|New size" | sed 's/^/  /' >&2 || true
 
 for pid in "${workers[@]}"; do wait "$pid" 2>/dev/null || true; done
 workers=()

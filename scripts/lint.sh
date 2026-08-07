@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Lint and type-check the application code.
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 PYTHON="${PYTHON:-$REPO_ROOT/.venv/bin/python}"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
 
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 log "ruff check"
 "$PYTHON" -m ruff check app

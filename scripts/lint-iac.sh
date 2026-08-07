@@ -7,9 +7,10 @@
 # toolchain still gets useful feedback — CI installs everything and is the
 # authority.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 PYTHON="${PYTHON:-$REPO_ROOT/.venv/bin/python}"
 [[ -x "$PYTHON" ]] || PYTHON="$(command -v python3)"
@@ -104,7 +105,9 @@ fi
 
 # --- shell -----------------------------------------------------------------
 if have_cmd shellcheck; then
-  run "shellcheck" shellcheck scripts/*.sh scripts/lib/*.sh infra/kops/*.sh
+  # -x follows the `# shellcheck source=` directives so the sourced helpers in
+  # lib/common.sh are analysed too, rather than reported as unresolvable.
+  run "shellcheck" shellcheck -x scripts/*.sh scripts/lib/*.sh infra/kops/*.sh
 else
   skip "shellcheck" "apt-get install shellcheck"
 fi

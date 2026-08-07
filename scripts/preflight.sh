@@ -5,6 +5,7 @@
 #
 # Exits non-zero if any REQUIRED tool is missing. Optional tools only warn.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 require_supported_platform

@@ -7,6 +7,7 @@
 #
 # Nothing here is required to *review* the repo — only to run the local demo.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 require_supported_platform

@@ -5,6 +5,7 @@
 # The spec is generated from the route signatures, so it cannot drift from the
 # code. CI regenerates it and fails if the committed file is stale.
 # ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/common.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/common.sh"
 
 PYTHON="${PYTHON:-$REPO_ROOT/.venv/bin/python}"
@@ -15,7 +16,7 @@ mkdir -p "$(dirname "$OUTPUT")"
 
 log "Generating OpenAPI spec -> docs/openapi.yaml"
 
-cd "$REPO_ROOT/app"
+cd "$REPO_ROOT/app" || exit 1
 APP_ENVIRONMENT=docs "$PYTHON" - "$OUTPUT" <<'PY'
 import sys
 

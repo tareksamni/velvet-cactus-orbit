@@ -153,4 +153,4 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck scripts/*.sh scripts/lib/*.sh infra/kops/*.sh
+          shellcheck -x scripts/*.sh scripts/lib/*.sh infra/kops/*.sh
