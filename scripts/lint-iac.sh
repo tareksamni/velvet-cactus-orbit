@@ -73,6 +73,14 @@ else
   skip "tflint" "https://github.com/terraform-linters/tflint"
 fi
 
+CHECKOV="$VENV_BIN/checkov"
+[[ -x "$CHECKOV" ]] || CHECKOV="$(command -v checkov || true)"
+if [[ -n "$CHECKOV" ]]; then
+  run "checkov" "$CHECKOV" -d infra/terraform --framework terraform --quiet --compact
+else
+  skip "checkov" "pip install checkov"
+fi
+
 # --- Ansible ---------------------------------------------------------------
 ANSIBLE_PLAYBOOK="$VENV_BIN/ansible-playbook"
 [[ -x "$ANSIBLE_PLAYBOOK" ]] || ANSIBLE_PLAYBOOK="$(command -v ansible-playbook || true)"

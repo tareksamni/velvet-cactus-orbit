@@ -104,10 +104,6 @@ jobs:
           framework: terraform
           quiet: true
           soft_fail: false
-          # CKV_AWS_18 is access logging on the log bucket itself: enabling it
-          # would make the log bucket log to itself, which is a recursion, not
-          # a control.
-          skip_check: CKV_AWS_18
 
   ansible:
     name: Ansible

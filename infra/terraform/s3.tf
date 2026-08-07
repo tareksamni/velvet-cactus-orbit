@@ -4,6 +4,11 @@
 # ---------------------------------------------------------------------------
 
 resource "aws_s3_bucket" "csv_uploads" {
+  # checkov:skip=CKV_AWS_144:Cross-region replication doubles storage cost and
+  # adds a second region to operate. The lifecycle policy already moves objects
+  # to Glacier, and no RPO/RTO requirement was given. Revisit if one is.
+  # checkov:skip=CKV2_AWS_62:No event consumer exists — the application lists
+  # the bucket directly rather than reacting to notifications (ADR-0005).
   bucket = var.bucket_name
 
   # Left at the default (false) deliberately: a bucket holding archived
@@ -35,10 +40,65 @@ resource "aws_s3_bucket_public_access_block" "csv_uploads" {
 
 # --- encryption ------------------------------------------------------------
 
+data "aws_caller_identity" "current" {}
+
+# An explicit key policy, rather than relying on the default. The default gives
+# the account root full control and nothing else, which means the S3 log
+# delivery service cannot write encrypted access logs.
+data "aws_iam_policy_document" "csv_uploads_kms" {
+  # These three checks are written for IAM identity policies and misfire on a
+  # KMS KEY policy, where `Resource = "*"` is scoped to the key the policy is
+  # attached to — there is no ARN to narrow it to, because the key does not
+  # have one until it exists. Likewise the kms:* root statement is AWS's
+  # documented requirement: without it the key can become unmanageable, and
+  # deleting it is then the only recovery.
+  # checkov:skip=CKV_AWS_109:Resource "*" in a key policy means this key only.
+  # checkov:skip=CKV_AWS_111:Same — the grant is bounded by the key itself.
+  # checkov:skip=CKV_AWS_356:A key policy cannot reference its own ARN.
+  statement {
+    sid    = "AllowAccountAdministration"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  # Without this, enabling SSE-KMS on the logs bucket silently stops log
+  # delivery: S3 cannot generate a data key and simply drops the records.
+  statement {
+    sid    = "AllowS3LogDelivery"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["logging.s3.amazonaws.com"]
+    }
+
+    actions = [
+      "kms:GenerateDataKey",
+      "kms:Decrypt",
+    ]
+
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+}
+
 resource "aws_kms_key" "csv_uploads" {
   description             = "Encrypts CSV uploads at rest in ${var.bucket_name}"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.csv_uploads_kms.json
 }
 
 resource "aws_kms_alias" "csv_uploads" {
@@ -165,7 +225,36 @@ resource "aws_s3_bucket_lifecycle_configuration" "csv_uploads" {
 # --- access logging --------------------------------------------------------
 
 resource "aws_s3_bucket" "access_logs" {
+  # checkov:skip=CKV_AWS_18:This IS the access-log destination. Pointing its own
+  # logs at itself is a recursion, not a control.
+  # checkov:skip=CKV_AWS_144:Cross-region replication for 90-day access logs
+  # doubles storage cost and adds a second region to manage, for data that is
+  # already disposable. Revisit if logs become a compliance artefact.
+  # checkov:skip=CKV2_AWS_62:Nothing consumes log-write events.
   bucket = "${var.bucket_name}-logs"
+}
+
+resource "aws_s3_bucket_versioning" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.csv_uploads.arn
+    }
+    # Not optional here: S3 server access logging only supports an SSE-KMS
+    # destination bucket when S3 Bucket Keys are enabled. Without this, log
+    # delivery fails silently.
+    bucket_key_enabled = true
+  }
 }
 
 resource "aws_s3_bucket_public_access_block" "access_logs" {
@@ -188,6 +277,24 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
 
     expiration {
       days = 90
+    }
+
+    # Failed multipart uploads are invisible in the console but still billed.
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  # Versioning is on, so superseded log objects need expiring too or they
+  # accumulate forever behind the 90-day expiration above.
+  rule {
+    id     = "expire-noncurrent-logs"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
     }
   }
 }
