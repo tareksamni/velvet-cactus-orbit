@@ -54,17 +54,28 @@ class ObjectStorage:
         self._bucket = settings.s3_bucket
         self._prefix = settings.s3_prefix.strip("/")
 
+        # Bounded timeouts and retries matter here: with botocore's defaults an
+        # unreachable endpoint blocks for around a minute, which is long enough
+        # to stall application startup and fail the liveness probe while MinIO
+        # is still coming up. Fail fast and let Kubernetes retry the probe.
+        config_kwargs: dict[str, Any] = {
+            "connect_timeout": settings.s3_connect_timeout,
+            "read_timeout": settings.s3_read_timeout,
+            "retries": {"max_attempts": settings.s3_max_attempts, "mode": "standard"},
+        }
+        # MinIO only supports path-style addressing; real S3 accepts both.
+        if settings.s3_force_path_style or settings.s3_endpoint_url:
+            config_kwargs["s3"] = {"addressing_style": "path"}
+
         client_kwargs: dict[str, Any] = {
             "region_name": settings.s3_region,
+            "config": Config(**config_kwargs),
         }
         if settings.s3_endpoint_url:
             client_kwargs["endpoint_url"] = settings.s3_endpoint_url
         if settings.s3_access_key_id and settings.s3_secret_access_key:
             client_kwargs["aws_access_key_id"] = settings.s3_access_key_id
             client_kwargs["aws_secret_access_key"] = settings.s3_secret_access_key
-        # MinIO only supports path-style addressing; real S3 accepts both.
-        if settings.s3_force_path_style or settings.s3_endpoint_url:
-            client_kwargs["config"] = Config(s3={"addressing_style": "path"})
 
         self._client = boto3.client("s3", **client_kwargs)
 
@@ -170,11 +181,19 @@ class ObjectStorage:
         """
         if not self._settings.s3_endpoint_url:
             return
+        # This runs during application startup, so it must never raise: if
+        # storage is not up yet the pod should still start and let the
+        # readiness probe hold traffic back until it is. Note that
+        # NoCredentialsError is a BotoCoreError, not a ClientError — catching
+        # only the latter here would crash the process at boot.
         try:
             self._client.head_bucket(Bucket=self._bucket)
-        except ClientError:
-            try:
-                self._client.create_bucket(Bucket=self._bucket)
-                logger.info("created bucket %s", self._bucket)
-            except (ClientError, BotoCoreError) as exc:
-                logger.warning("could not create bucket %s: %s", self._bucket, exc)
+            return
+        except (ClientError, BotoCoreError) as exc:
+            logger.info("bucket %s not reachable yet (%s); attempting to create it", self._bucket, exc)
+
+        try:
+            self._client.create_bucket(Bucket=self._bucket)
+            logger.info("created bucket %s", self._bucket)
+        except (ClientError, BotoCoreError) as exc:
+            logger.warning("could not create bucket %s: %s", self._bucket, exc)

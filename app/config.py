@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     s3_secret_access_key: str | None = None
     # MinIO needs path-style addressing; real S3 prefers virtual-host style.
     s3_force_path_style: bool = False
+    # Bounded so an unreachable endpoint fails fast instead of stalling startup
+    # and the liveness probe. See ObjectStorage.__init__.
+    s3_connect_timeout: int = 3
+    s3_read_timeout: int = 10
+    s3_max_attempts: int = 2
 
     # --- upload limits ----------------------------------------------------
     max_upload_bytes: int = 25 * 1024 * 1024  # 25 MiB
