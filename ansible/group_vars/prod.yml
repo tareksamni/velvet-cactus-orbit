@@ -1,0 +1,27 @@
+---
+# Production on the kops cluster. Never applied — see ASSUMPTIONS.md.
+
+env_name: prod
+values_file: values-prod.yaml
+
+app_log_level: INFO
+app_workers: 4
+
+image_repository: ghcr.io/OWNER/csv-app
+image_tag: ""            # falls back to Chart.appVersion; CI sets this explicitly
+image_pull_policy: IfNotPresent
+
+# Real S3, and deliberately NO credentials: the pod authenticates with IRSA via
+# the ServiceAccount annotation in values-prod.yaml, so no secret material for
+# this application exists in the cluster at all.
+s3_bucket: csv-uploads-prod
+s3_region: eu-west-1
+s3_endpoint_url: ""
+s3_force_path_style: false
+s3_access_key_id: ""
+s3_secret_access_key: ""
+
+minio_enabled: false
+
+nginx_static_cache_expiry: 24h
+nginx_gzip_enabled: true

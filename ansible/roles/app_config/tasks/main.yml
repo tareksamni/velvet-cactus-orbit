@@ -1,0 +1,39 @@
+---
+# Render application configuration into a Helm values overlay.
+
+- name: Ensure the build directory exists
+  ansible.builtin.file:
+    path: "{{ generated_values | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Render the nginx configuration
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: "{{ generated_values | dirname }}/nginx.conf"
+    mode: "0644"
+  register: nginx_conf_file
+
+- name: Read the rendered nginx configuration back
+  ansible.builtin.slurp:
+    src: "{{ nginx_conf_file.dest }}"
+  register: nginx_conf_raw
+
+- name: Expose the nginx configuration as a variable
+  ansible.builtin.set_fact:
+    # Embedded into the values overlay as a literal block so the chart can put
+    # it straight into the ConfigMap.
+    nginx_config: "{{ nginx_conf_raw.content | b64decode }}"
+
+- name: Render the Helm values overlay
+  ansible.builtin.template:
+    src: values.generated.yaml.j2
+    dest: "{{ generated_values }}"
+    mode: "0644"
+
+- name: Show what was generated
+  ansible.builtin.debug:
+    msg: >-
+      Application configuration for '{{ env_name }}' rendered to
+      {{ generated_values }} ({{ s3_endpoint_url | default('AWS S3', true) }},
+      bucket {{ s3_bucket }})

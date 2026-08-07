@@ -1,0 +1,88 @@
+{{ ansible_managed | comment }}
+# Rendered by ansible/roles/app_config from group_vars/{{ env_name }}.yml.
+# Lands in the chart's ConfigMap and is mounted at /etc/nginx/nginx.conf in the
+# nginx sidecar.
+
+worker_processes auto;
+error_log /dev/stderr warn;
+pid /tmp/nginx.pid;
+
+events {
+    worker_connections {{ nginx_worker_connections }};
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    # The container runs with a read-only root filesystem, so every path nginx
+    # writes to must live under the writable /tmp mount.
+    client_body_temp_path /tmp/client_body;
+    proxy_temp_path       /tmp/proxy;
+    fastcgi_temp_path     /tmp/fastcgi;
+    uwsgi_temp_path       /tmp/uwsgi;
+    scgi_temp_path        /tmp/scgi;
+
+    log_format json escape=json '{"time":"$time_iso8601","method":"$request_method",'
+        '"uri":"$request_uri","status":$status,"bytes":$body_bytes_sent,'
+        '"upstream":"$upstream_addr","duration":$request_time}';
+    access_log /dev/stdout json;
+
+    sendfile      on;
+    tcp_nopush    on;
+    server_tokens off;
+    keepalive_timeout {{ nginx_keepalive_timeout }};
+
+{% if nginx_gzip_enabled %}
+    gzip on;
+    gzip_types text/css application/javascript image/svg+xml application/json;
+    gzip_min_length 512;
+{% else %}
+    gzip off;
+{% endif %}
+
+    # Derived from app_max_upload_bytes so nginx can never reject an upload the
+    # application would have accepted, or vice versa.
+    client_max_body_size {{ (app_max_upload_bytes / 1048576) | round(0, 'ceil') | int }}m;
+
+    upstream app {
+        server 127.0.0.1:8000;
+        keepalive 16;
+    }
+
+    server {
+        listen 8080;
+        server_name _;
+
+        # Static assets are read from the emptyDir volume shared with the app
+        # container — the "shared storage (not NFS)" requirement. Nginx serves
+        # files it does not itself contain.
+        location /static/ {
+            alias /shared/static/;
+            access_log off;
+{% if nginx_static_cache_expiry and nginx_static_cache_expiry != 0 %}
+            expires {{ nginx_static_cache_expiry }};
+            add_header Cache-Control "public";
+{% else %}
+            expires -1;
+            add_header Cache-Control "no-store";
+{% endif %}
+            # Proves at request time that nginx served this off the shared
+            # volume rather than the request falling through to the app.
+            add_header X-Served-By "nginx-shared-volume" always;
+            try_files $uri =404;
+        }
+
+        location / {
+            proxy_pass http://app;
+            proxy_http_version 1.1;
+            proxy_set_header Host              $host;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Connection        "";
+            proxy_read_timeout {{ nginx_proxy_read_timeout }};
+            proxy_request_buffering off;
+        }
+    }
+}

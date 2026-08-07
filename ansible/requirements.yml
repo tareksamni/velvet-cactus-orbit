@@ -1,0 +1,8 @@
+---
+# Ansible collections. Installed by scripts/bootstrap.sh:
+#   ansible-galaxy collection install -r ansible/requirements.yml
+collections:
+  # Provides kubernetes.core.helm and kubernetes.core.k8s, used by the
+  # k8s_deploy role to drive the Helm release.
+  - name: kubernetes.core
+    version: ">=6.0.0"

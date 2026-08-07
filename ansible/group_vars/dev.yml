@@ -1,0 +1,27 @@
+---
+# Local minikube. Overrides only what actually differs from all.yml.
+
+env_name: dev
+values_file: values-dev.yaml
+
+app_log_level: DEBUG
+app_workers: 1
+
+image_repository: csv-app
+image_tag: dev
+image_pull_policy: Never
+
+# MinIO stands in for S3 so the upload path is genuinely exercised locally.
+# Path-style addressing is mandatory for MinIO.
+s3_endpoint_url: "http://csv-app-minio:9000"
+s3_force_path_style: true
+s3_access_key_id: minioadmin
+s3_secret_access_key: minioadmin
+
+# Demo credentials only — fine to keep in plain text because they grant access
+# to nothing but an ephemeral in-cluster MinIO. Real credentials would come
+# from ansible-vault, or better, not exist at all (see prod.yml).
+minio_enabled: true
+
+nginx_static_cache_expiry: 0
+nginx_gzip_enabled: false

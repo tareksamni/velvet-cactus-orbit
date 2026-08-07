@@ -1,0 +1,45 @@
+---
+# ---------------------------------------------------------------------------
+# Application configuration — the case study's "have application configs in
+# Ansible" requirement.
+#
+# Ansible owns these VALUES. Helm owns the Kubernetes OBJECTS. The app_config
+# role renders these into build/values.generated.yaml, which is passed to Helm
+# as the last -f argument so it wins over the chart defaults.
+# ---------------------------------------------------------------------------
+
+app_name: csv-app
+release_name: csv-app
+namespace: csv-app
+chart_path: "{{ playbook_dir }}/../charts/csv-app"
+generated_values: "{{ playbook_dir }}/build/values.generated.yaml"
+
+# --- application settings -------------------------------------------------
+app_log_level: INFO
+app_workers: 2
+# 25 MiB. Nginx's client_max_body_size is derived from this so the two limits
+# can never disagree.
+app_max_upload_bytes: 26214400
+app_max_rows_display: 1000
+app_max_files_listed: 100
+
+# --- object storage -------------------------------------------------------
+s3_bucket: csv-uploads
+s3_prefix: uploads
+s3_region: us-east-1
+s3_endpoint_url: ""
+s3_force_path_style: false
+s3_access_key_id: ""
+s3_secret_access_key: ""
+
+# --- nginx tuning ---------------------------------------------------------
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+nginx_static_cache_expiry: 1h
+nginx_proxy_read_timeout: 60s
+nginx_gzip_enabled: true
+
+# --- deployment behaviour -------------------------------------------------
+helm_wait: true
+helm_timeout: 5m
+helm_atomic: true

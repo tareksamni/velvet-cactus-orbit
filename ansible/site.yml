@@ -1,0 +1,35 @@
+---
+# ---------------------------------------------------------------------------
+# Deploy the application to a Kubernetes cluster.
+#
+#   ansible-playbook site.yml -e env=dev
+#   ansible-playbook site.yml -e env=prod
+#
+# This is cluster configuration management, not server-fleet management: kops
+# owns the node lifecycle, so there is no fleet to configure. Ansible's job here
+# is to own APPLICATION CONFIGURATION (group_vars/) and render it into the Helm
+# release. Everything runs locally against the current kubeconfig.
+# ---------------------------------------------------------------------------
+
+- name: Deploy csv-app
+  hosts: "{{ env | default('dev') }}"
+  connection: local
+  gather_facts: false
+
+  pre_tasks:
+    - name: Fail early on an unknown environment
+      ansible.builtin.assert:
+        that:
+          - env | default('dev') in ['dev', 'prod']
+        fail_msg: "env must be 'dev' or 'prod' (got '{{ env | default('dev') }}')"
+        quiet: true
+
+    - name: Announce the target
+      ansible.builtin.debug:
+        msg: "Deploying '{{ release_name }}' to environment '{{ env_name }}' in namespace '{{ namespace }}'"
+
+  roles:
+    # Renders application config -> build/values.generated.yaml
+    - role: app_config
+    # Applies it via Helm
+    - role: k8s_deploy
