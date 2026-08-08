@@ -27,9 +27,11 @@ warn_unused_configs = true
 module = ["moto.*", "botocore.*"]
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = "tests.*"
-disallow_untyped_defs = false
+# No override relaxing the test files: app/tests has no __init__.py, so mypy
+# sees them as top-level modules ("conftest", "test_api", ...) and the old
+# `tests.*` pattern never matched. mypy 2.x reports such a section as unused,
+# which is how it surfaced. The tests pass under strict anyway, so the honest
+# fix is to drop the exemption rather than rewrite it.
 
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]
