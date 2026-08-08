@@ -89,6 +89,14 @@ configuration is owned by Ansible rather than baked into the chart.
 {{- if .Values.nginx.config -}}
 {{ .Values.nginx.config }}
 {{- else -}}
+#
+# Chart fallback — NOT the Ansible-managed configuration.
+#
+# Reaching this means nginx.config was not supplied, so ansible/build/
+# values.generated.yaml was not passed to Helm. Deploy with `make deploy`
+# (or `devspace dev`, which renders it first) to get the managed config.
+# This fallback exists only so `helm install` works standalone.
+#
 worker_processes auto;
 error_log /dev/stderr warn;
 pid /tmp/nginx.pid;
