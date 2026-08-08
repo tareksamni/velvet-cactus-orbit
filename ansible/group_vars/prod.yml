@@ -8,7 +8,7 @@ app_log_level: INFO
 app_workers: 4
 
 image_repository: ghcr.io/tareksamni/csv-app
-image_tag: ""            # falls back to Chart.appVersion; CI sets this explicitly
+image_tag: "v1.1.0"      # released tag; CI can override with sha-<short>
 image_pull_policy: IfNotPresent
 
 # Real S3, and deliberately NO credentials: the pod authenticates with IRSA via

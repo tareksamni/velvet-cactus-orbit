@@ -60,7 +60,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     lifespan=lifespan,
     title="CSV Processor",
-    version="1.0.0",
+    # Kept in step with Chart.appVersion and the published image tag, so the
+    # version a client sees in /openapi.json matches the release it came from.
+    version="1.1.0",
     summary="Upload, parse and archive stock-on-hand CSV exports.",
     description=(
         "Parses CSV files in the stock-on-hand export format "

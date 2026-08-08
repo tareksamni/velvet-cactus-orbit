@@ -12,7 +12,10 @@ replicaCount: 2
 
 image:
   repository: csv-app
-  tag: ""          # defaults to .Chart.AppVersion when empty
+  # The released image tag. Empty would fall back to .Chart.AppVersion;
+  # naming it explicitly means the deployed version is visible here rather
+  # than inferred from another file.
+  tag: "v1.1.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

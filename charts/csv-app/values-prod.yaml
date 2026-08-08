@@ -9,9 +9,10 @@ replicaCount: 3
 image:
   # Published by .github/workflows/docker.yml on every push to main.
   repository: ghcr.io/tareksamni/csv-app
-  # Empty falls back to Chart.appVersion. CI sets an immutable sha-<short> tag
-  # for a real deploy — "latest" moves, which makes a rollback ambiguous.
-  tag: ""
+  # The released tag, published by .github/workflows/docker.yml. CI can override
+  # this with an immutable sha-<short> tag for a specific deploy — "latest"
+  # moves, which makes a rollback ambiguous, so it is deliberately not used.
+  tag: "v1.1.0"
   pullPolicy: IfNotPresent
 
 # The GHCR package is private until made public. A private package needs a pull
