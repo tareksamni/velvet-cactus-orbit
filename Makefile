@@ -45,6 +45,9 @@ build:  ## Build the app image into minikube's Docker daemon
 deploy:  ## Deploy via Ansible + Helm (ENV=dev|prod)
 	@scripts/deploy.sh "$(ENV)"
 
+config:  ## Render Ansible config to values.generated.yaml without deploying (ENV=dev|prod)
+	@scripts/render-config.sh "$(ENV)"
+
 dev:  ## Start the DevSpace inner loop (hot reload)
 	@scripts/dev.sh
 

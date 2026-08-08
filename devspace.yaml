@@ -43,6 +43,14 @@ deployments:
         path: ./charts/csv-app
       valuesFiles:
         - ./charts/csv-app/values-dev.yaml
+        # Ansible's rendered configuration — the same file `make deploy` passes.
+        # Without it the chart falls back to its built-in nginx config, which
+        # differs from the Ansible-managed one (it caches static assets for an
+        # hour, so an edited stylesheet never reaches the browser). The pipeline
+        # below regenerates this before every deploy.
+        - ./ansible/build/values.generated.yaml
+      # Inline values are applied after every valuesFiles entry, so the image
+      # reference below still wins over the one Ansible renders.
       values:
         # Dev-only overrides live HERE rather than in values-dev.yaml, so that
         # values-dev.yaml stays an honest deployable environment instead of
@@ -169,13 +177,18 @@ commands:
     command: make smoke
 
 pipelines:
+  # Rendering the config FIRST is what keeps the dev loop honest: Ansible owns
+  # application configuration (ADR-0008), and DevSpace driving Helm directly
+  # would otherwise quietly deploy the chart's fallback values instead.
   dev: |-
     run_dependencies --all
     ensure_pull_secrets --all
+    ./scripts/render-config.sh dev
     build_images --all
     create_deployments --all
     start_dev app
   deploy: |-
+    ./scripts/render-config.sh dev
     run_dependencies --all
     build_images --all
     create_deployments --all

@@ -30,6 +30,15 @@
 
   roles:
     # Renders application config -> build/values.generated.yaml
+    #
+    # Tagged so the render can run on its own:
+    #   ansible-playbook site.yml -e env=dev --tags config
+    #
+    # DevSpace uses exactly that, because it drives Helm itself but must still
+    # deploy the SAME configuration Ansible produces — otherwise the dev loop
+    # silently runs on the chart's fallback nginx config instead of this one.
     - role: app_config
+      tags: [config]
     # Applies it via Helm
     - role: k8s_deploy
+      tags: [deploy]
