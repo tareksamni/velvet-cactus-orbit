@@ -51,6 +51,16 @@ honest deployable environment rather than becoming a development special case.
 - The dev pod also needs `readOnlyRootFilesystem: false`, patched dev-only:
   DevSpace cannot sync into a read-only filesystem, and production keeps the
   read-only root.
+- **DevSpace must render Ansible's configuration before deploying.** It drives
+  Helm itself rather than going through `ansible-playbook site.yml`, so without
+  an explicit step it never produces `values.generated.yaml` and the chart
+  silently falls back to its built-in nginx config. That fallback differs in
+  ways that break the dev loop — it sets `expires 1h` and
+  `Cache-Control: public`, so an edited stylesheet syncs into the container and
+  the browser keeps serving the cached copy. The `dev` and `deploy` pipelines
+  therefore run `scripts/render-config.sh` first, and the generated file is
+  listed in `valuesFiles`. Ansible still owns application configuration
+  (ADR-0008); DevSpace just consumes what it produces.
 - **Cost:** a developer needs a running Kubernetes cluster. `make up` handles it,
   but it is heavier than `docker compose up` and needs more RAM.
 - DevSpace is an extra tool to install (`make bootstrap`).

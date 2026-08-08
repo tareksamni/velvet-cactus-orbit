@@ -172,6 +172,32 @@ In order of preference:
 Do **not** widen `severity` or set `exit-code: 0` to get a green build. That
 turns the gate off for everything, not just the finding in front of you.
 
+### nginx is running the wrong configuration
+
+The chart carries a fallback nginx config for standalone `helm install`. If it
+is in use, Ansible's rendered configuration was never passed to Helm.
+
+Check which one a running pod has:
+
+```bash
+kubectl -n csv-app get cm csv-app -o jsonpath='{.data.nginx\.conf}' | head -5
+```
+
+`# Ansible managed` means the managed config. `# Chart fallback` means it is
+not, and settings such as `gzip off` and the `no-store` cache headers for
+static assets are missing.
+
+Fix by deploying through a path that renders the config first:
+
+```bash
+make deploy ENV=dev     # ansible-playbook site.yml
+make config ENV=dev     # render only, no deploy
+devspace dev            # pipeline runs scripts/render-config.sh first
+```
+
+A bare `helm install` without `-f ansible/build/values.generated.yaml` will
+always get the fallback — that is what it is for.
+
 ### `devspace dev`: a CSS or JS edit does not show up
 
 Expected if you only sync `./app`. nginx serves `/shared/static`, not
