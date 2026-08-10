@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # Two stages so build tooling never reaches the runtime image.
 # ---------------------------------------------------------------------------
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -12,7 +12,7 @@ RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Non-root from the start; the chart also enforces runAsNonRoot.
 RUN groupadd --system --gid 10001 app \
