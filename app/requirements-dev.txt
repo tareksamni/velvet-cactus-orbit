@@ -4,8 +4,8 @@ pytest==9.1.1
 pytest-cov==7.1.0
 httpx==0.28.1
 moto[s3]==5.2.2
-ruff==0.16.1
+ruff==0.16.3
 mypy==2.3.0
 types-PyYAML==6.0.12.20260724
-boto3-stubs[s3]==1.43.64
+boto3-stubs[s3]==1.43.71
 PyYAML==6.0.3
